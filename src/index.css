@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  body {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  
+  @page {
+    margin: 1cm;
+  }
+}
