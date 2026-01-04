@@ -39,6 +39,7 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
   const { getGSTRate } = useSettings();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [applyGST, setApplyGST] = useState(true); // Toggle for GST
 
   const defaultGSTRate = getGSTRate();
 
@@ -73,12 +74,19 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
 
   const baseAmount = watch('baseAmount');
   const gstRate = watch('gstRate');
-  const gstAmount = calculateGST(baseAmount || 0, gstRate || defaultGSTRate);
+  
+  // Calculate GST only if applyGST is enabled
+  const effectiveGSTRate = applyGST ? (gstRate || defaultGSTRate) : 0;
+  const gstAmount = applyGST ? calculateGST(baseAmount || 0, effectiveGSTRate) : 0;
   const totalAmount = calculateTotal(baseAmount || 0, gstAmount);
 
   useEffect(() => {
-    setValue('gstRate', defaultGSTRate);
-  }, [defaultGSTRate, setValue]);
+    if (applyGST) {
+      setValue('gstRate', defaultGSTRate);
+    } else {
+      setValue('gstRate', 0);
+    }
+  }, [defaultGSTRate, applyGST, setValue]);
 
   const onSubmit = async (data: CheckInFormData & { actualCheckInTime?: string }) => {
     // Check if it's an advance booking
@@ -141,6 +149,11 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
             : new Date().toISOString());
 
       // Create booking
+      // Use effective GST values (0 if GST is disabled)
+      const finalGSTRate = applyGST ? data.gstRate : 0;
+      const finalGSTAmount = applyGST ? gstAmount : 0;
+      const finalTotalAmount = applyGST ? totalAmount : (data.baseAmount || 0);
+
       const { error: bookingError } = await createBooking({
         room_id: room.id,
         guest_id: guestData.id,
@@ -149,9 +162,9 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
         actual_check_in_time: actualCheckInTimestamp,
         number_of_guests: data.numberOfGuests,
         base_amount: data.baseAmount,
-        gst_rate: data.gstRate,
-        gst_amount: gstAmount,
-        total_amount: totalAmount,
+        gst_rate: finalGSTRate,
+        gst_amount: finalGSTAmount,
+        total_amount: finalTotalAmount,
         amount_paid: data.amountPaid,
         isAdvanceBooking,
       });
@@ -290,6 +303,20 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
 
       <div className="border-t pt-4">
         <h3 className="font-semibold text-gray-900 mb-4">Payment Details</h3>
+        
+        {/* GST Toggle */}
+        <div className="mb-4">
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={applyGST}
+              onChange={(e) => setApplyGST(e.target.checked)}
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <span className="text-sm font-medium text-gray-700">Apply GST</span>
+          </label>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
             label="Base Amount (₹) *"
@@ -299,15 +326,23 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
             {...register('baseAmount', { valueAsNumber: true })}
             error={errors.baseAmount?.message}
           />
-          <Input
-            label="GST Rate (%) *"
-            type="number"
-            step="0.01"
-            min={0}
-            max={100}
-            {...register('gstRate', { valueAsNumber: true })}
-            error={errors.gstRate?.message}
-          />
+          {applyGST && (
+            <Input
+              label="GST Rate (%) *"
+              type="number"
+              step="0.01"
+              min={0}
+              max={100}
+              {...register('gstRate', { valueAsNumber: true })}
+              error={errors.gstRate?.message}
+            />
+          )}
+          {!applyGST && (
+            <div className="text-sm text-gray-600 pt-8">
+              <p className="font-medium">GST:</p>
+              <p>Not Applied</p>
+            </div>
+          )}
         </div>
 
         <div className="mt-4 bg-gray-50 p-4 rounded-lg space-y-2">
@@ -315,13 +350,15 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
             <span className="font-medium">Base Amount:</span>
             <span>{formatCurrency(baseAmount || 0)}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="font-medium">GST ({gstRate || defaultGSTRate}%):</span>
-            <span>{formatCurrency(gstAmount)}</span>
-          </div>
+          {applyGST && (
+            <div className="flex justify-between">
+              <span className="font-medium">GST ({effectiveGSTRate}%):</span>
+              <span>{formatCurrency(gstAmount)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-lg font-bold border-t pt-2">
             <span>Total Amount:</span>
-            <span>{formatCurrency(totalAmount)}</span>
+            <span>{formatCurrency(applyGST ? totalAmount : (baseAmount || 0))}</span>
           </div>
         </div>
 
