@@ -14,7 +14,6 @@ export function CheckIn() {
   const { reservedBookings, confirmAdvanceBooking, refetch: refetchBookings } = useBookings();
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [selectedReservedBooking, setSelectedReservedBooking] = useState<Booking | null>(null);
   const [processing, setProcessing] = useState(false);
 
   const today = new Date().toISOString().split('T')[0];
