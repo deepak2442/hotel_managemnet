@@ -7,7 +7,7 @@ import { CheckInForm } from '../components/bookings/CheckInForm';
 import { Button } from '../components/common/Button';
 import type { Room } from '../lib/types';
 import type { Booking } from '../lib/types';
-import { formatCurrency, formatDate } from '../lib/utils';
+import { formatCurrency, formatDate, openWhatsApp } from '../lib/utils';
 
 export function CheckIn() {
   const { rooms, refetch } = useRooms();
@@ -20,10 +20,6 @@ export function CheckIn() {
   // Get reserved bookings that are due today or in the past (ready to confirm)
   const readyToConfirmBookings = reservedBookings.filter(
     b => b.check_in_date <= today
-  );
-  // Get all future advance bookings (check-in date is in the future)
-  const futureAdvanceBookings = reservedBookings.filter(
-    b => b.check_in_date > today
   );
 
   const availableRooms = rooms.filter(r => r.status === 'available');
@@ -58,6 +54,18 @@ export function CheckIn() {
       alert('Advance booking confirmed! Guest is now checked in.');
       refetch();
       refetchBookings();
+      
+      // Open WhatsApp if phone number is available
+      if (booking.guest?.phone && booking.room) {
+        setTimeout(() => {
+          openWhatsApp(
+            booking.guest!.phone!,
+            booking.guest!.name,
+            booking.room!.room_number,
+            booking.amount_paid
+          );
+        }, 500);
+      }
     }
     setProcessing(false);
   };
@@ -68,63 +76,6 @@ export function CheckIn() {
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Check-In Guest</h1>
         <p className="text-gray-600">Select an available room to check in a guest or confirm advance bookings</p>
       </div>
-
-      {/* All Future Advance Bookings */}
-      {futureAdvanceBookings.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Future Advance Bookings</h2>
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-purple-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Room
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Guest
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Check-in Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Check-out Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Guests
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Advance Paid
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {futureAdvanceBookings.map((booking) => (
-                  <tr key={booking.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {booking.room?.room_number}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {booking.guest?.name}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(booking.check_in_date)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {booking.check_out_date ? formatDate(booking.check_out_date) : 'Not set'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {booking.number_of_guests}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatCurrency(booking.amount_paid)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* Advance Bookings Ready to Confirm */}
       {readyToConfirmBookings.length > 0 && (
@@ -167,14 +118,35 @@ export function CheckIn() {
                       {formatCurrency(booking.amount_paid)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <Button
-                        variant="primary"
-                        onClick={() => handleConfirmAdvanceBooking(booking)}
-                        disabled={processing}
-                        className="text-xs"
-                      >
-                        Confirm Check-In
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="primary"
+                          onClick={() => handleConfirmAdvanceBooking(booking)}
+                          disabled={processing}
+                          className="text-xs"
+                        >
+                          Confirm Check-In
+                        </Button>
+                        {booking.guest?.phone && (
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              if (booking.guest?.phone && booking.room) {
+                                openWhatsApp(
+                                  booking.guest.phone,
+                                  booking.guest.name,
+                                  booking.room.room_number,
+                                  booking.amount_paid
+                                );
+                              }
+                            }}
+                            className="text-xs bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
+                            title="Send WhatsApp Welcome Message"
+                          >
+                            📱 WhatsApp
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

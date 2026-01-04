@@ -40,9 +40,22 @@ export function CheckOutModal({ booking, onConfirm, onCancel, loading }: CheckOu
           <span>{formatCurrency(booking.gst_amount)}</span>
         </div>
         <div className="flex justify-between font-bold border-t pt-2">
-          <span>Total Paid:</span>
-          <span>{formatCurrency(booking.amount_paid)}</span>
+          <span>Total Amount:</span>
+          <span>{formatCurrency(Number(booking.total_amount))}</span>
         </div>
+        <div className="flex justify-between">
+          <span>Amount Paid:</span>
+          <span className="text-green-600">{formatCurrency(Number(booking.amount_paid))}</span>
+        </div>
+        {(() => {
+          const outstanding = Number(booking.total_amount) - Number(booking.amount_paid);
+          return outstanding > 0 ? (
+            <div className="flex justify-between font-bold border-t pt-2">
+              <span>Outstanding Balance:</span>
+              <span className="text-red-600">{formatCurrency(outstanding)}</span>
+            </div>
+          ) : null;
+        })()}
       </div>
 
       <div className="flex gap-4 pt-4">

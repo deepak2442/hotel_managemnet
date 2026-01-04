@@ -6,6 +6,7 @@ import { Modal } from '../components/common/Modal';
 import { BookingDetails } from '../components/bookings/BookingDetails';
 import { useBookings } from '../hooks/useBookings';
 import { RoomForm } from '../components/rooms/RoomForm';
+import { RoomSelectorModal } from '../components/rooms/RoomSelectorModal';
 import { Button } from '../components/common/Button';
 
 export function Rooms() {
@@ -14,6 +15,7 @@ export function Rooms() {
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [showRoomForm, setShowRoomForm] = useState(false);
+  const [showRoomSelector, setShowRoomSelector] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
 
   const handleRoomClick = (room: Room) => {
@@ -26,10 +28,14 @@ export function Rooms() {
     setShowRoomForm(true);
   };
 
-  const handleEditRoom = (room: Room) => {
+  const handleEditRoomClick = () => {
+    setShowRoomSelector(true);
+  };
+
+  const handleRoomSelect = (room: Room) => {
     setEditingRoom(room);
+    setShowRoomSelector(false);
     setShowRoomForm(true);
-    setShowDetails(false);
   };
 
   const handleRoomFormSubmit = async (data: {
@@ -69,7 +75,15 @@ export function Rooms() {
             Occupied: {rooms.filter(r => r.status === 'occupied').length} | 
             Cleaning: {rooms.filter(r => r.status === 'cleaning').length}
           </div>
-          <Button onClick={handleAddRoom}>Add Room</Button>
+          <div className="flex gap-2">
+            <Button onClick={handleEditRoomClick} variant="outline" className="flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Edit Room
+            </Button>
+            <Button onClick={handleAddRoom}>Add Room</Button>
+          </div>
         </div>
       </div>
 
@@ -99,13 +113,26 @@ export function Rooms() {
                 <BookingDetails booking={activeBooking} />
               </div>
             )}
-            <div className="mt-4 pt-4 border-t">
-              <Button onClick={() => handleEditRoom(selectedRoom)} className="w-full">
-                Edit Room
-              </Button>
-            </div>
           </div>
         )}
+      </Modal>
+
+      {/* Room Selector Modal */}
+      <Modal
+        isOpen={showRoomSelector}
+        onClose={() => {
+          setShowRoomSelector(false);
+        }}
+        title="Select Room to Edit"
+        size="lg"
+      >
+        <RoomSelectorModal
+          rooms={rooms}
+          onSelect={handleRoomSelect}
+          onCancel={() => {
+            setShowRoomSelector(false);
+          }}
+        />
       </Modal>
 
       {/* Add/Edit Room Modal */}

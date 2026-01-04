@@ -8,6 +8,7 @@ import { Rooms } from './pages/Rooms';
 import { CheckIn } from './pages/CheckIn';
 import { CheckOut } from './pages/CheckOut';
 import { Reports } from './pages/Reports';
+import { AdvanceBookings } from './pages/AdvanceBookings';
 
 function App() {
   return (
@@ -61,6 +62,16 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <Reports />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/advance-bookings"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <AdvanceBookings />
                 </Layout>
               </ProtectedRoute>
             }

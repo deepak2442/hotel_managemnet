@@ -13,7 +13,11 @@ export function BookingDetails({ booking }: BookingDetailsProps) {
         <div className="bg-gray-50 p-4 rounded-lg space-y-2">
           <p><span className="font-medium">Guest Name:</span> {booking.guest.name}</p>
           <p><span className="font-medium">Address:</span> {booking.guest.address}</p>
-          <p><span className="font-medium">Proof:</span> {booking.guest.proof_type} - {booking.guest.proof_number}</p>
+          {booking.guest.proof_type && booking.guest.proof_number ? (
+            <p><span className="font-medium">Proof:</span> {booking.guest.proof_type} - {booking.guest.proof_number}</p>
+          ) : (
+            <p><span className="font-medium">Proof:</span> <span className="text-gray-500 italic">Not provided yet (will be collected at check-in)</span></p>
+          )}
           {booking.guest.phone && <p><span className="font-medium">Phone:</span> {booking.guest.phone}</p>}
         </div>
       )}

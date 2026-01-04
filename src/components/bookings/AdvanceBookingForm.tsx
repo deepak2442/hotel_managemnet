@@ -2,46 +2,96 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import type { CheckInFormData, Room } from '../../lib/types';
+import type { Room, ProofType } from '../../lib/types';
 import { Input } from '../common/Input';
 import { Button } from '../common/Button';
 import { useGuests } from '../../hooks/useGuests';
 import { useBookings } from '../../hooks/useBookings';
 import { useSettings } from '../../hooks/useSettings';
-import { calculateGST, calculateTotal, formatCurrency, openWhatsApp } from '../../lib/utils';
-import { normalizeCheckInDate, calculateDefaultCheckoutDate, getTodayDate } from '../../lib/billingUtils';
+import { calculateGST, calculateTotal, formatCurrency } from '../../lib/utils';
+import { calculateDefaultCheckoutDate } from '../../lib/billingUtils';
 
-const checkInSchema = z.object({
+type AdvanceBookingFormData = {
+  roomId: string;
+  guestName: string;
+  address: string;
+  proofType?: ProofType;
+  proofNumber?: string;
+  phone?: string;
+  email?: string;
+  numberOfGuests: number;
+  checkInDate: string;
+  checkOutDate?: string;
+  baseAmount: number;
+  gstRate: number;
+  amountPaid: number;
+};
+
+const advanceBookingSchema = z.object({
+  roomId: z.string().min(1, 'Room selection is required'),
   guestName: z.string().min(1, 'Guest name is required'),
   address: z.string().min(1, 'Address is required'),
-  proofType: z.enum(['aadhar', 'pan', 'driving_license']),
-  proofNumber: z.string().min(1, 'Proof number is required'),
+  proofType: z.enum(['aadhar', 'pan', 'driving_license']).optional(),
+  proofNumber: z.string().optional(),
   phone: z.string().optional(),
   email: z.string().email('Invalid email').optional().or(z.literal('')),
-  numberOfGuests: z.number().min(1).max(2),
+  numberOfGuests: z.number().min(1),
   checkInDate: z.string().min(1, 'Check-in date is required'),
-  actualCheckInTime: z.string().optional(),
   checkOutDate: z.string().optional(),
   baseAmount: z.number().min(0, 'Base amount must be positive'),
   gstRate: z.number().min(0).max(100),
   amountPaid: z.number().min(0, 'Amount paid must be positive'),
+}).refine((data) => {
+  const today = new Date().toISOString().split('T')[0];
+  return data.checkInDate > today;
+}, {
+  message: 'Check-in date must be in the future',
+  path: ['checkInDate'],
+}).refine((data) => {
+  // If proofNumber is provided, proofType must also be provided
+  if (data.proofNumber && !data.proofType) {
+    return false;
+  }
+  // If proofType is provided, proofNumber must also be provided
+  if (data.proofType && !data.proofNumber) {
+    return false;
+  }
+  return true;
+}, {
+  message: 'Both proof type and proof number must be provided together, or both left empty',
+  path: ['proofNumber'],
 });
 
-interface CheckInFormProps {
-  room: Room;
+interface AdvanceBookingFormProps {
+  rooms: Room[];
   onSuccess: () => void;
   onCancel: () => void;
 }
 
-export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
+export function AdvanceBookingForm({ rooms, onSuccess, onCancel }: AdvanceBookingFormProps) {
   const { createGuest } = useGuests();
   const { createBooking } = useBookings();
   const { getGSTRate } = useSettings();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [applyGST, setApplyGST] = useState(true); // Toggle for GST
+  const [applyGST, setApplyGST] = useState(true);
 
   const defaultGSTRate = getGSTRate();
+
+  // Filter rooms - exclude cleaning and maintenance
+  const availableRooms = rooms.filter(
+    r => r.status !== 'cleaning' && r.status !== 'maintenance'
+  );
+
+  // Get tomorrow's date as default
+  const getTomorrowDate = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const year = tomorrow.getFullYear();
+    const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
+    const day = String(tomorrow.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   const {
     register,
@@ -49,20 +99,25 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
     watch,
     setValue,
     formState: { errors },
-  } = useForm<CheckInFormData & { actualCheckInTime?: string }>({
-    resolver: zodResolver(checkInSchema),
+  } = useForm<AdvanceBookingFormData>({
+    resolver: zodResolver(advanceBookingSchema),
     defaultValues: {
-      proofType: 'aadhar',
+      roomId: '',
+      proofType: undefined,
+      proofNumber: '',
       numberOfGuests: 1,
-      checkInDate: getTodayDate(),
-      actualCheckInTime: new Date().toISOString().slice(0, 16), // YYYY-MM-DDTHH:mm format
+      checkInDate: getTomorrowDate(),
       baseAmount: 0,
       gstRate: defaultGSTRate,
       amountPaid: 0,
     },
   });
 
+  const selectedRoomId = watch('roomId');
+  const selectedRoom = availableRooms.find(r => r.id === selectedRoomId);
   const checkInDate = watch('checkInDate');
+  const baseAmount = watch('baseAmount');
+  const gstRate = watch('gstRate');
 
   // Auto-calculate checkout date when check-in date changes
   useEffect(() => {
@@ -72,9 +127,6 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
     }
   }, [checkInDate, setValue]);
 
-  const baseAmount = watch('baseAmount');
-  const gstRate = watch('gstRate');
-  
   // Calculate GST only if applyGST is enabled
   const effectiveGSTRate = applyGST ? (gstRate || defaultGSTRate) : 0;
   const gstAmount = applyGST ? calculateGST(baseAmount || 0, effectiveGSTRate) : 0;
@@ -88,25 +140,22 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
     }
   }, [defaultGSTRate, applyGST, setValue]);
 
-  const onSubmit = async (data: CheckInFormData & { actualCheckInTime?: string }) => {
-    // Check if it's an advance booking
+  const onSubmit = async (data: AdvanceBookingFormData) => {
+    if (!selectedRoom) {
+      setError('Please select a room');
+      return;
+    }
+
+    // Validate check-in date is in the future
     const today = new Date().toISOString().split('T')[0];
-    const isAdvanceBooking = data.checkInDate > today;
-
-    // For advance bookings, room can be available or occupied (but not cleaning/maintenance)
-    // For immediate check-ins, room must be available
-    if (!isAdvanceBooking && room.status !== 'available') {
-      setError('Room is not available for check-in');
+    if (data.checkInDate <= today) {
+      setError('Check-in date must be in the future for advance bookings');
       return;
     }
 
-    if (isAdvanceBooking && (room.status === 'cleaning' || room.status === 'maintenance')) {
-      setError('Room is not available for advance booking');
-      return;
-    }
-
-    if (data.numberOfGuests > room.max_occupancy) {
-      setError(`Maximum ${room.max_occupancy} guests allowed in this room`);
+    // Validate number of guests
+    if (data.numberOfGuests > selectedRoom.max_occupancy) {
+      setError(`Maximum ${selectedRoom.max_occupancy} guests allowed in this room`);
       return;
     }
 
@@ -115,80 +164,53 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
 
     try {
       // Create guest
+      // Handle empty strings from form fields
+      const proofType = data.proofType && data.proofType.trim() !== '' ? data.proofType : undefined;
+      const proofNumber = data.proofNumber && data.proofNumber.trim() !== '' ? data.proofNumber : undefined;
+      
       const { data: guestData, error: guestError } = await createGuest({
         name: data.guestName,
         address: data.address,
-        proof_type: data.proofType,
-        proof_number: data.proofNumber,
-        phone: data.phone || undefined,
-        email: data.email || undefined,
+        proof_type: proofType,
+        proof_number: proofNumber,
+        phone: data.phone && data.phone.trim() !== '' ? data.phone : undefined,
+        email: data.email && data.email.trim() !== '' ? data.email : undefined,
       });
 
       if (guestError || !guestData) {
         throw new Error(guestError || 'Failed to create guest');
       }
 
-      // For advance bookings, use the selected check-in date directly
-      // For immediate check-ins, normalize to today at 12:00 PM
-      const normalizedCheckInDate = isAdvanceBooking 
-        ? data.checkInDate 
-        : normalizeCheckInDate(
-            data.actualCheckInTime ? new Date(data.actualCheckInTime) : new Date()
-          );
-      
       // Calculate default checkout if not provided
-      const checkoutDate = data.checkOutDate || calculateDefaultCheckoutDate(normalizedCheckInDate);
-      
-      // Store actual check-in time
-      // For advance bookings, leave it null (will be set when confirmed)
-      // For immediate check-ins, use provided time or current time
-      const actualCheckInTimestamp = isAdvanceBooking
-        ? null
-        : (data.actualCheckInTime
-            ? new Date(data.actualCheckInTime).toISOString()
-            : new Date().toISOString());
+      const checkoutDate = data.checkOutDate || calculateDefaultCheckoutDate(data.checkInDate);
 
-      // Create booking
-      // Use effective GST values (0 if GST is disabled)
+      // Create booking - always as advance booking
       const finalGSTRate = applyGST ? data.gstRate : 0;
       const finalGSTAmount = applyGST ? gstAmount : 0;
       const finalTotalAmount = applyGST ? totalAmount : (data.baseAmount || 0);
 
       const { error: bookingError } = await createBooking({
-        room_id: room.id,
+        room_id: selectedRoom.id,
         guest_id: guestData.id,
-        check_in_date: normalizedCheckInDate,
+        check_in_date: data.checkInDate,
         check_out_date: checkoutDate,
-        actual_check_in_time: actualCheckInTimestamp,
+        actual_check_in_time: null, // Will be set when confirmed
         number_of_guests: data.numberOfGuests,
         base_amount: data.baseAmount,
         gst_rate: finalGSTRate,
         gst_amount: finalGSTAmount,
         total_amount: finalTotalAmount,
         amount_paid: data.amountPaid,
-        isAdvanceBooking,
+        isAdvanceBooking: true,
       });
 
       if (bookingError) {
         throw new Error(bookingError);
       }
 
-      // Open WhatsApp for immediate check-ins (not advance bookings)
-      if (!isAdvanceBooking && data.phone) {
-        // Small delay to ensure booking is saved before opening WhatsApp
-        setTimeout(() => {
-          openWhatsApp(
-            data.phone!,
-            data.guestName,
-            room.room_number,
-            data.amountPaid
-          );
-        }, 500);
-      }
-
       onSuccess();
     } catch (err: any) {
-      setError(err.message || 'Failed to create booking');
+      setError(err.message || 'Failed to create advance booking');
     } finally {
       setSubmitting(false);
     }
@@ -202,9 +224,38 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
         </div>
       )}
 
-      <div className="bg-blue-50 border border-blue-200 p-4 rounded mb-4">
-        <p className="font-medium text-blue-900">Room: {room.room_number} ({room.room_type})</p>
-        <p className="text-sm text-blue-700">Max Occupancy: {room.max_occupancy} guests</p>
+      <div className="bg-purple-50 border border-purple-200 p-4 rounded mb-4">
+        <p className="font-medium text-purple-900">📅 Advance Booking</p>
+        <p className="text-sm text-purple-700">This booking will be reserved for a future date</p>
+      </div>
+
+      {/* Room Selection */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Select Room *
+        </label>
+        <select
+          {...register('roomId')}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">-- Select a Room --</option>
+          {availableRooms.map((room) => (
+            <option key={room.id} value={room.id}>
+              Room {room.room_number} - {room.room_type} ({room.floor}) - {room.status}
+            </option>
+          ))}
+        </select>
+        {errors.roomId && (
+          <p className="mt-1 text-sm text-red-600">{errors.roomId.message}</p>
+        )}
+        {selectedRoom && (
+          <div className="mt-2 bg-blue-50 border border-blue-200 p-3 rounded">
+            <p className="text-sm text-blue-900">
+              <span className="font-medium">Selected:</span> Room {selectedRoom.room_number} ({selectedRoom.room_type})
+            </p>
+            <p className="text-sm text-blue-700">Max Occupancy: {selectedRoom.max_occupancy} guests</p>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -217,7 +268,7 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
           label="Number of Guests *"
           type="number"
           min={1}
-          max={room.max_occupancy}
+          max={selectedRoom?.max_occupancy || 2}
           {...register('numberOfGuests', { valueAsNumber: true })}
           error={errors.numberOfGuests?.message}
         />
@@ -229,24 +280,32 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
         error={errors.address?.message}
       />
 
+      <div className="bg-yellow-50 border border-yellow-200 p-3 rounded mb-4">
+        <p className="text-sm text-yellow-800">
+          <strong>Note:</strong> ID proof is optional for advance bookings. Guest will provide proof at check-in.
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Proof Type *
+            Proof Type (Optional)
           </label>
           <select
             {...register('proofType')}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
+            <option value="">-- Not provided yet --</option>
             <option value="aadhar">Aadhar</option>
             <option value="pan">PAN</option>
             <option value="driving_license">Driving License</option>
           </select>
         </div>
         <Input
-          label="Proof Number *"
+          label="Proof Number (Optional)"
           {...register('proofNumber')}
           error={errors.proofNumber?.message}
+          placeholder="Will be provided at check-in"
         />
       </div>
 
@@ -265,53 +324,20 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
         />
       </div>
 
-      <div className="bg-yellow-50 border border-yellow-200 p-3 rounded mb-4">
-        <p className="text-sm text-yellow-800">
-          <strong>24-Hour Billing:</strong> Check-in is normalized to 12:00 PM (noon) for billing purposes. 
-          Checkout is by default next day at 12:00 PM. If checkout is after 12:00 PM, it's charged as 2 days.
-        </p>
-        {checkInDate && checkInDate > new Date().toISOString().split('T')[0] && (
-          <p className="text-sm text-blue-800 mt-2 font-semibold">
-            ⚠️ This is an <strong>Advance Booking</strong>. Advance payment will be collected now.
-          </p>
-        )}
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Input
           label="Check-in Date *"
           type="date"
-          min={getTodayDate()}
+          min={getTomorrowDate()}
           {...register('checkInDate')}
           error={errors.checkInDate?.message}
         />
-        {checkInDate && checkInDate <= new Date().toISOString().split('T')[0] && (
-          <Input
-            label="Actual Arrival Time (Optional)"
-            type="datetime-local"
-            {...register('actualCheckInTime')}
-            error={errors.actualCheckInTime?.message}
-          />
-        )}
-        {checkInDate && checkInDate > new Date().toISOString().split('T')[0] && (
-          <div className="text-sm text-gray-600 pt-8">
-            <p className="font-medium">Advance Booking:</p>
-            <p>Room will be reserved. Guest will check in on {checkInDate}.</p>
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Input
           label="Check-out Date *"
           type="date"
           {...register('checkOutDate')}
           error={errors.checkOutDate?.message}
         />
-        <div className="text-sm text-gray-600 pt-8">
-          <p className="font-medium">Billing Check-in:</p>
-          <p>{checkInDate ? `${checkInDate} at 12:00 PM` : 'Not set'}</p>
-        </div>
       </div>
 
       <div className="border-t pt-4">
@@ -377,7 +403,7 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
 
         <div className="mt-4">
           <Input
-            label="Amount Paid (₹) *"
+            label="Advance Amount Paid (₹) *"
             type="number"
             step="0.01"
             min={0}
@@ -389,11 +415,7 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
 
       <div className="flex gap-4 pt-4">
         <Button type="submit" disabled={submitting} className="flex-1">
-          {submitting 
-            ? 'Processing...' 
-            : checkInDate && checkInDate > new Date().toISOString().split('T')[0]
-            ? 'Create Advance Booking'
-            : 'Check In Guest'}
+          {submitting ? 'Creating...' : 'Create Advance Booking'}
         </Button>
         <Button type="button" variant="outline" onClick={onCancel} disabled={submitting}>
           Cancel

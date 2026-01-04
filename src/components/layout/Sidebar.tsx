@@ -6,6 +6,7 @@ const navigation = [
   { name: 'Rooms', href: '/rooms', icon: '🚪' },
   { name: 'Check-In', href: '/check-in', icon: '✅' },
   { name: 'Check-Out', href: '/check-out', icon: '🚪' },
+  { name: 'Advance Bookings', href: '/advance-bookings', icon: '📅' },
   { name: 'Reports', href: '/reports', icon: '📊' },
 ];
 

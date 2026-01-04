@@ -6,16 +6,18 @@ import type { Booking } from '../lib/types';
 import { Modal } from '../components/common/Modal';
 import { CheckOutModal } from '../components/bookings/CheckOutModal';
 import { RoomExtensionModal } from '../components/bookings/RoomExtensionModal';
+import { PaymentModal } from '../components/bookings/PaymentModal';
 import { Button } from '../components/common/Button';
 import { formatCurrency, formatDate } from '../lib/utils';
 
 export function CheckOut() {
-  const { activeBookings, checkOut, markRoomCleaned, extendBooking, refetch } = useBookings();
+  const { activeBookings, checkOut, markRoomCleaned, extendBooking, updatePayment, refetch } = useBookings();
   const { rooms, refetch: refetchRooms } = useRooms();
   const { getGSTRate } = useSettings();
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [showCheckOutModal, setShowCheckOutModal] = useState(false);
   const [showExtensionModal, setShowExtensionModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showCleaningModal, setShowCleaningModal] = useState(false);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
@@ -92,6 +94,28 @@ export function CheckOut() {
     setProcessing(false);
   };
 
+  const handleAddPayment = (booking: Booking) => {
+    setSelectedBooking(booking);
+    setShowPaymentModal(true);
+  };
+
+  const confirmPayment = async (amount: number) => {
+    if (!selectedBooking) return;
+
+    setProcessing(true);
+    const { error } = await updatePayment(selectedBooking.id, amount);
+
+    if (error) {
+      alert(`Error: ${error}`);
+    } else {
+      alert(`Payment of ${formatCurrency(amount)} added successfully!`);
+      setShowPaymentModal(false);
+      setSelectedBooking(null);
+      refetch();
+    }
+    setProcessing(false);
+  };
+
   // Get rooms that are in cleaning status
   const cleaningRooms = rooms.filter(r => r.status === 'cleaning');
 
@@ -124,7 +148,13 @@ export function CheckOut() {
                     Guests
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Total Amount
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Amount Paid
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Outstanding
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
@@ -147,10 +177,36 @@ export function CheckOut() {
                       {booking.number_of_guests}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatCurrency(booking.amount_paid)}
+                      {formatCurrency(Number(booking.total_amount))}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">
+                      {formatCurrency(Number(booking.amount_paid))}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {(() => {
+                        const outstanding = Number(booking.total_amount) - Number(booking.amount_paid);
+                        return outstanding > 0 ? (
+                          <span className="font-semibold text-red-600">{formatCurrency(outstanding)}</span>
+                        ) : (
+                          <span className="text-green-600">Paid</span>
+                        );
+                      })()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <div className="flex gap-2">
+                        {(() => {
+                          const outstanding = Number(booking.total_amount) - Number(booking.amount_paid);
+                          return outstanding > 0 ? (
+                            <Button
+                              variant="secondary"
+                              onClick={() => handleAddPayment(booking)}
+                              disabled={processing}
+                              className="text-xs"
+                            >
+                              Add Payment
+                            </Button>
+                          ) : null;
+                        })()}
                         <Button
                           variant="primary"
                           onClick={() => handleExtendBooking(booking)}
@@ -250,6 +306,29 @@ export function CheckOut() {
             onConfirm={confirmExtension}
             onCancel={() => {
               setShowExtensionModal(false);
+              setSelectedBooking(null);
+            }}
+            loading={processing}
+          />
+        )}
+      </Modal>
+
+      {/* Payment Modal */}
+      <Modal
+        isOpen={showPaymentModal}
+        onClose={() => {
+          setShowPaymentModal(false);
+          setSelectedBooking(null);
+        }}
+        title="Add Payment"
+        size="md"
+      >
+        {selectedBooking && (
+          <PaymentModal
+            booking={selectedBooking}
+            onConfirm={confirmPayment}
+            onCancel={() => {
+              setShowPaymentModal(false);
               setSelectedBooking(null);
             }}
             loading={processing}

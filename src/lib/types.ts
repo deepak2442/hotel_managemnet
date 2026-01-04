@@ -20,8 +20,8 @@ export interface Guest {
   id: string;
   name: string;
   address: string;
-  proof_type: ProofType;
-  proof_number: string;
+  proof_type: ProofType | null;
+  proof_number: string | null;
   phone?: string;
   email?: string;
   created_at: string;

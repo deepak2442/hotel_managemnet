@@ -277,6 +277,33 @@ export function useBookings() {
     return bookings.filter(b => b.status === 'reserved');
   };
 
+  const updatePayment = async (bookingId: string, additionalAmount: number) => {
+    try {
+      const booking = bookings.find(b => b.id === bookingId);
+      if (!booking) throw new Error('Booking not found');
+
+      const newAmountPaid = Number(booking.amount_paid) + additionalAmount;
+      
+      // Ensure amount_paid doesn't exceed total_amount
+      const finalAmountPaid = Math.min(newAmountPaid, Number(booking.total_amount));
+
+      const { error } = await supabase
+        .from('bookings')
+        .update({
+          amount_paid: finalAmountPaid,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', bookingId);
+
+      if (error) throw error;
+
+      await fetchBookings();
+      return { error: null };
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  };
+
   return {
     bookings,
     activeBookings: getActiveBookings(),
@@ -288,6 +315,7 @@ export function useBookings() {
     markRoomCleaned,
     extendBooking,
     confirmAdvanceBooking,
+    updatePayment,
     getActiveBookingByRoom,
     refetch: fetchBookings,
   };
