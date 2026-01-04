@@ -56,34 +56,48 @@ export function useBookings() {
     gst_amount: number;
     total_amount: number;
     amount_paid: number;
+    isAdvanceBooking?: boolean;
   }) => {
     try {
+      const today = new Date().toISOString().split('T')[0];
+      const checkInDate = bookingData.check_in_date;
+      const isAdvance = bookingData.isAdvanceBooking || checkInDate > today;
+      
+      // Determine booking status
+      const status = isAdvance ? 'reserved' : 'checked_in';
+
+      // Extract isAdvanceBooking from bookingData to avoid inserting it into database
+      const { isAdvanceBooking: _, ...dbBookingData } = bookingData;
+
       const { data, error } = await supabase
         .from('bookings')
         .insert([{
-          ...bookingData,
-          check_out_date: bookingData.check_out_date || null,
-          actual_check_in_time: bookingData.actual_check_in_time || null,
+          ...dbBookingData,
+          check_out_date: dbBookingData.check_out_date || null,
+          actual_check_in_time: dbBookingData.actual_check_in_time || null,
+          status,
         }])
         .select()
         .single();
 
       if (error) throw error;
 
-      // Update room status to occupied
-      await supabase
-        .from('rooms')
-        .update({ status: 'occupied' })
-        .eq('id', bookingData.room_id);
+      // Only update room status to occupied if it's not an advance booking
+      if (!isAdvance) {
+        await supabase
+          .from('rooms')
+          .update({ status: 'occupied' })
+          .eq('id', bookingData.room_id);
 
-      // Log room status change
-      await supabase
-        .from('room_status_log')
-        .insert([{
-          room_id: bookingData.room_id,
-          booking_id: data.id,
-          status: 'occupied',
-        }]);
+        // Log room status change
+        await supabase
+          .from('room_status_log')
+          .insert([{
+            room_id: bookingData.room_id,
+            booking_id: data.id,
+            status: 'occupied',
+          }]);
+      }
 
       await fetchBookings();
       return { data, error: null };
@@ -169,14 +183,111 @@ export function useBookings() {
     }
   };
 
+  const extendBooking = async (
+    bookingId: string,
+    additionalDays: number,
+    dailyRate: number,
+    gstRate: number
+  ) => {
+    try {
+      const booking = bookings.find(b => b.id === bookingId);
+      if (!booking) throw new Error('Booking not found');
+
+      if (!booking.check_out_date) {
+        throw new Error('Cannot extend booking without checkout date');
+      }
+
+      // Calculate additional charges
+      const additionalBaseAmount = dailyRate * additionalDays;
+      const additionalGstAmount = (additionalBaseAmount * gstRate) / 100;
+      const additionalTotalAmount = additionalBaseAmount + additionalGstAmount;
+
+      // Calculate new checkout date
+      const currentCheckout = new Date(booking.check_out_date);
+      currentCheckout.setDate(currentCheckout.getDate() + additionalDays);
+      const newCheckoutDate = currentCheckout.toISOString().split('T')[0];
+
+      // Update booking
+      const { error } = await supabase
+        .from('bookings')
+        .update({
+          check_out_date: newCheckoutDate,
+          base_amount: Number(booking.base_amount) + additionalBaseAmount,
+          gst_amount: Number(booking.gst_amount) + additionalGstAmount,
+          total_amount: Number(booking.total_amount) + additionalTotalAmount,
+          amount_paid: Number(booking.amount_paid) + additionalTotalAmount, // Assume full payment for extension
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', bookingId);
+
+      if (error) throw error;
+
+      await fetchBookings();
+      return { error: null, additionalAmount: additionalTotalAmount };
+    } catch (err: any) {
+      return { error: err.message, additionalAmount: 0 };
+    }
+  };
+
+  const confirmAdvanceBooking = async (bookingId: string) => {
+    try {
+      const booking = bookings.find(b => b.id === bookingId);
+      if (!booking) throw new Error('Booking not found');
+
+      const today = new Date().toISOString().split('T')[0];
+      if (booking.check_in_date > today) {
+        throw new Error('Cannot confirm advance booking before check-in date');
+      }
+
+      // Update booking status to checked_in
+      const { error } = await supabase
+        .from('bookings')
+        .update({
+          status: 'checked_in',
+          actual_check_in_time: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', bookingId);
+
+      if (error) throw error;
+
+      // Update room status to occupied
+      await supabase
+        .from('rooms')
+        .update({ status: 'occupied' })
+        .eq('id', booking.room_id);
+
+      // Log room status change
+      await supabase
+        .from('room_status_log')
+        .insert([{
+          room_id: booking.room_id,
+          booking_id: bookingId,
+          status: 'occupied',
+        }]);
+
+      await fetchBookings();
+      return { error: null };
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  };
+
+  const getReservedBookings = () => {
+    return bookings.filter(b => b.status === 'reserved');
+  };
+
   return {
     bookings,
     activeBookings: getActiveBookings(),
+    reservedBookings: getReservedBookings(),
     loading,
     error,
     createBooking,
     checkOut,
     markRoomCleaned,
+    extendBooking,
+    confirmAdvanceBooking,
     getActiveBookingByRoom,
     refetch: fetchBookings,
   };

@@ -81,8 +81,19 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
   }, [defaultGSTRate, setValue]);
 
   const onSubmit = async (data: CheckInFormData & { actualCheckInTime?: string }) => {
-    if (room.status !== 'available') {
+    // Check if it's an advance booking
+    const today = new Date().toISOString().split('T')[0];
+    const isAdvanceBooking = data.checkInDate > today;
+
+    // For advance bookings, room can be available or occupied (but not cleaning/maintenance)
+    // For immediate check-ins, room must be available
+    if (!isAdvanceBooking && room.status !== 'available') {
       setError('Room is not available for check-in');
+      return;
+    }
+
+    if (isAdvanceBooking && (room.status === 'cleaning' || room.status === 'maintenance')) {
+      setError('Room is not available for advance booking');
       return;
     }
 
@@ -109,18 +120,25 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
         throw new Error(guestError || 'Failed to create guest');
       }
 
-      // Normalize check-in date to 12:00 PM for billing
-      const normalizedCheckInDate = normalizeCheckInDate(
-        data.actualCheckInTime ? new Date(data.actualCheckInTime) : new Date()
-      );
+      // For advance bookings, use the selected check-in date directly
+      // For immediate check-ins, normalize to today at 12:00 PM
+      const normalizedCheckInDate = isAdvanceBooking 
+        ? data.checkInDate 
+        : normalizeCheckInDate(
+            data.actualCheckInTime ? new Date(data.actualCheckInTime) : new Date()
+          );
       
       // Calculate default checkout if not provided
       const checkoutDate = data.checkOutDate || calculateDefaultCheckoutDate(normalizedCheckInDate);
       
-      // Store actual check-in time (if provided, otherwise use current time)
-      const actualCheckInTimestamp = data.actualCheckInTime
-        ? new Date(data.actualCheckInTime).toISOString()
-        : new Date().toISOString();
+      // Store actual check-in time
+      // For advance bookings, leave it null (will be set when confirmed)
+      // For immediate check-ins, use provided time or current time
+      const actualCheckInTimestamp = isAdvanceBooking
+        ? null
+        : (data.actualCheckInTime
+            ? new Date(data.actualCheckInTime).toISOString()
+            : new Date().toISOString());
 
       // Create booking
       const { error: bookingError } = await createBooking({
@@ -135,6 +153,7 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
         gst_amount: gstAmount,
         total_amount: totalAmount,
         amount_paid: data.amountPaid,
+        isAdvanceBooking,
       });
 
       if (bookingError) {
@@ -143,7 +162,7 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
 
       onSuccess();
     } catch (err: any) {
-      setError(err.message || 'Failed to check in guest');
+      setError(err.message || 'Failed to create booking');
     } finally {
       setSubmitting(false);
     }
@@ -225,21 +244,35 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
           <strong>24-Hour Billing:</strong> Check-in is normalized to 12:00 PM (noon) for billing purposes. 
           Checkout is by default next day at 12:00 PM. If checkout is after 12:00 PM, it's charged as 2 days.
         </p>
+        {checkInDate && checkInDate > new Date().toISOString().split('T')[0] && (
+          <p className="text-sm text-blue-800 mt-2 font-semibold">
+            ⚠️ This is an <strong>Advance Booking</strong>. Advance payment will be collected now.
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Input
           label="Check-in Date *"
           type="date"
+          min={getTodayDate()}
           {...register('checkInDate')}
           error={errors.checkInDate?.message}
         />
-        <Input
-          label="Actual Arrival Time (Optional)"
-          type="datetime-local"
-          {...register('actualCheckInTime')}
-          error={errors.actualCheckInTime?.message}
-        />
+        {checkInDate && checkInDate <= new Date().toISOString().split('T')[0] && (
+          <Input
+            label="Actual Arrival Time (Optional)"
+            type="datetime-local"
+            {...register('actualCheckInTime')}
+            error={errors.actualCheckInTime?.message}
+          />
+        )}
+        {checkInDate && checkInDate > new Date().toISOString().split('T')[0] && (
+          <div className="text-sm text-gray-600 pt-8">
+            <p className="font-medium">Advance Booking:</p>
+            <p>Room will be reserved. Guest will check in on {checkInDate}.</p>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -306,7 +339,11 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
 
       <div className="flex gap-4 pt-4">
         <Button type="submit" disabled={submitting} className="flex-1">
-          {submitting ? 'Processing...' : 'Check In Guest'}
+          {submitting 
+            ? 'Processing...' 
+            : checkInDate && checkInDate > new Date().toISOString().split('T')[0]
+            ? 'Create Advance Booking'
+            : 'Check In Guest'}
         </Button>
         <Button type="button" variant="outline" onClick={onCancel} disabled={submitting}>
           Cancel

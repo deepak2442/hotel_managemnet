@@ -1,17 +1,21 @@
 import { useState } from 'react';
 import { useBookings } from '../hooks/useBookings';
 import { useRooms } from '../hooks/useRooms';
+import { useSettings } from '../hooks/useSettings';
 import type { Booking } from '../lib/types';
 import { Modal } from '../components/common/Modal';
 import { CheckOutModal } from '../components/bookings/CheckOutModal';
+import { RoomExtensionModal } from '../components/bookings/RoomExtensionModal';
 import { Button } from '../components/common/Button';
 import { formatCurrency, formatDate } from '../lib/utils';
 
 export function CheckOut() {
-  const { activeBookings, checkOut, markRoomCleaned, refetch } = useBookings();
+  const { activeBookings, checkOut, markRoomCleaned, extendBooking, refetch } = useBookings();
   const { rooms, refetch: refetchRooms } = useRooms();
+  const { getGSTRate } = useSettings();
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [showCheckOutModal, setShowCheckOutModal] = useState(false);
+  const [showExtensionModal, setShowExtensionModal] = useState(false);
   const [showCleaningModal, setShowCleaningModal] = useState(false);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
@@ -60,6 +64,34 @@ export function CheckOut() {
     setProcessing(false);
   };
 
+  const handleExtendBooking = (booking: Booking) => {
+    setSelectedBooking(booking);
+    setShowExtensionModal(true);
+  };
+
+  const confirmExtension = async (additionalDays: number, dailyRate: number, additionalAmount: number) => {
+    if (!selectedBooking) return;
+
+    setProcessing(true);
+    const { error } = await extendBooking(
+      selectedBooking.id,
+      additionalDays,
+      dailyRate,
+      getGSTRate()
+    );
+
+    if (error) {
+      alert(`Error: ${error}`);
+    } else {
+      alert(`Booking extended successfully! Additional amount: ${formatCurrency(additionalAmount)}`);
+      setShowExtensionModal(false);
+      setSelectedBooking(null);
+      refetch();
+      refetchRooms();
+    }
+    setProcessing(false);
+  };
+
   // Get rooms that are in cleaning status
   const cleaningRooms = rooms.filter(r => r.status === 'cleaning');
 
@@ -95,7 +127,7 @@ export function CheckOut() {
                     Amount Paid
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Action
+                    Actions
                   </th>
                 </tr>
               </thead>
@@ -118,13 +150,24 @@ export function CheckOut() {
                       {formatCurrency(booking.amount_paid)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <Button
-                        variant="danger"
-                        onClick={() => handleCheckOut(booking)}
-                        disabled={processing}
-                      >
-                        Check-Out
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="primary"
+                          onClick={() => handleExtendBooking(booking)}
+                          disabled={processing}
+                          className="text-xs"
+                        >
+                          Extend
+                        </Button>
+                        <Button
+                          variant="danger"
+                          onClick={() => handleCheckOut(booking)}
+                          disabled={processing}
+                          className="text-xs"
+                        >
+                          Check-Out
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -184,6 +227,29 @@ export function CheckOut() {
             onConfirm={confirmCheckOut}
             onCancel={() => {
               setShowCheckOutModal(false);
+              setSelectedBooking(null);
+            }}
+            loading={processing}
+          />
+        )}
+      </Modal>
+
+      {/* Room Extension Modal */}
+      <Modal
+        isOpen={showExtensionModal}
+        onClose={() => {
+          setShowExtensionModal(false);
+          setSelectedBooking(null);
+        }}
+        title="Extend Room Booking"
+        size="lg"
+      >
+        {selectedBooking && (
+          <RoomExtensionModal
+            booking={selectedBooking}
+            onConfirm={confirmExtension}
+            onCancel={() => {
+              setShowExtensionModal(false);
               setSelectedBooking(null);
             }}
             loading={processing}
