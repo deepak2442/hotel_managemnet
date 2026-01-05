@@ -9,9 +9,10 @@ import { RoomExtensionModal } from '../components/bookings/RoomExtensionModal';
 import { PaymentModal } from '../components/bookings/PaymentModal';
 import { Button } from '../components/common/Button';
 import { formatCurrency, formatDate } from '../lib/utils';
+import { generateBillPDF } from '../lib/billGenerator';
 
 export function CheckOut() {
-  const { activeBookings, checkOut, markRoomCleaned, extendBooking, updatePayment, refetch } = useBookings();
+  const { activeBookings, bookings, checkOut, markRoomCleaned, extendBooking, updatePayment, refetch } = useBookings();
   const { rooms, refetch: refetchRooms } = useRooms();
   const { getGSTRate } = useSettings();
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
@@ -71,7 +72,7 @@ export function CheckOut() {
     setShowExtensionModal(true);
   };
 
-  const confirmExtension = async (additionalDays: number, dailyRate: number, additionalAmount: number) => {
+  const confirmExtension = async (additionalDays: number, dailyRate: number, additionalAmount: number, paymentData: { qrAmount: number; cashAmount: number }) => {
     if (!selectedBooking) return;
 
     setProcessing(true);
@@ -79,7 +80,8 @@ export function CheckOut() {
       selectedBooking.id,
       additionalDays,
       dailyRate,
-      getGSTRate()
+      getGSTRate(),
+      paymentData
     );
 
     if (error) {
@@ -99,16 +101,17 @@ export function CheckOut() {
     setShowPaymentModal(true);
   };
 
-  const confirmPayment = async (amount: number) => {
+  const confirmPayment = async (paymentData: { qrAmount: number; cashAmount: number }) => {
     if (!selectedBooking) return;
 
     setProcessing(true);
-    const { error } = await updatePayment(selectedBooking.id, amount);
+    const { error } = await updatePayment(selectedBooking.id, paymentData);
 
     if (error) {
       alert(`Error: ${error}`);
     } else {
-      alert(`Payment of ${formatCurrency(amount)} added successfully!`);
+      const total = paymentData.qrAmount + paymentData.cashAmount;
+      alert(`Payment of ${formatCurrency(total)} added successfully!`);
       setShowPaymentModal(false);
       setSelectedBooking(null);
       refetch();
@@ -118,6 +121,23 @@ export function CheckOut() {
 
   // Get rooms that are in cleaning status
   const cleaningRooms = rooms.filter(r => r.status === 'cleaning');
+
+  // Get recently checked-out bookings (last 7 days) for bill generation
+  const getRecentCheckedOutBookings = () => {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    return bookings.filter(b => {
+      if (b.status !== 'checked_out' || !b.check_out_date) return false;
+      const checkoutDate = new Date(b.check_out_date);
+      return checkoutDate >= sevenDaysAgo;
+    }).slice(0, 10); // Limit to 10 most recent
+  };
+
+  const recentCheckedOutBookings = getRecentCheckedOutBookings();
+
+  const handleGenerateBill = (booking: Booking) => {
+    generateBillPDF(booking);
+  };
 
   return (
     <div>
@@ -132,57 +152,74 @@ export function CheckOut() {
           </div>
         ) : (
           <div className="bg-white rounded-lg shadow overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Room
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
                     Guest
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                     Check-in
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
                     Guests
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Total Amount
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
+                    Total
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Amount Paid
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
+                    QR
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
+                    Cash
+                  </th>
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Paid
+                  </th>
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Outstanding
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <span className="hidden sm:inline">Actions</span>
+                    <span className="sm:hidden">Act</span>
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {activeBookings.map((booking) => (
                   <tr key={booking.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {booking.room?.room_number}
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      <div className="flex flex-col">
+                        <span>{booking.room?.room_number}</span>
+                        <span className="text-xs text-gray-500 sm:hidden">{booking.guest?.name}</span>
+                      </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden sm:table-cell">
                       {booking.guest?.name}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
                       {formatDate(booking.check_in_date)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden lg:table-cell">
                       {booking.number_of_guests}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden lg:table-cell">
                       {formatCurrency(Number(booking.total_amount))}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-blue-600 hidden lg:table-cell">
+                      {formatCurrency(Number(booking.qr_amount || 0))}
+                    </td>
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-green-600 hidden lg:table-cell">
+                      {formatCurrency(Number(booking.cash_amount || 0))}
+                    </td>
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-green-600">
                       {formatCurrency(Number(booking.amount_paid))}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm">
                       {(() => {
                         const outstanding = Number(booking.total_amount) - Number(booking.amount_paid);
                         return outstanding > 0 ? (
@@ -192,8 +229,8 @@ export function CheckOut() {
                         );
                       })()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex gap-2">
+                    <td className="px-3 sm:px-6 py-4 text-sm">
+                      <div className="flex flex-col sm:flex-row gap-2 min-w-[120px]">
                         {(() => {
                           const outstanding = Number(booking.total_amount) - Number(booking.amount_paid);
                           return outstanding > 0 ? (
@@ -201,9 +238,10 @@ export function CheckOut() {
                               variant="secondary"
                               onClick={() => handleAddPayment(booking)}
                               disabled={processing}
-                              className="text-xs"
+                              className="text-xs px-3 py-2 min-h-[44px] w-full sm:w-auto"
                             >
-                              Add Payment
+                              <span className="hidden sm:inline">Add Payment</span>
+                              <span className="sm:hidden">Pay</span>
                             </Button>
                           ) : null;
                         })()}
@@ -211,7 +249,7 @@ export function CheckOut() {
                           variant="primary"
                           onClick={() => handleExtendBooking(booking)}
                           disabled={processing}
-                          className="text-xs"
+                          className="text-xs px-3 py-2 min-h-[44px] w-full sm:w-auto"
                         >
                           Extend
                         </Button>
@@ -219,9 +257,10 @@ export function CheckOut() {
                           variant="danger"
                           onClick={() => handleCheckOut(booking)}
                           disabled={processing}
-                          className="text-xs"
+                          className="text-xs px-3 py-2 min-h-[44px] w-full sm:w-auto"
                         >
-                          Check-Out
+                          <span className="hidden sm:inline">Check-Out</span>
+                          <span className="sm:hidden">Out</span>
                         </Button>
                       </div>
                     </td>
@@ -229,9 +268,72 @@ export function CheckOut() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Recently Checked-Out Bookings Section */}
+      {recentCheckedOutBookings.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-xl font-semibold text-gray-800 mb-4">Recently Checked-Out (Generate Bill)</h2>
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Room
+                    </th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
+                      Guest
+                    </th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                      Check-out
+                    </th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Total
+                    </th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Action
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {recentCheckedOutBookings.map((booking) => (
+                    <tr key={booking.id}>
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        <div className="flex flex-col">
+                          <span>{booking.room?.room_number}</span>
+                          <span className="text-xs text-gray-500 sm:hidden">{booking.guest?.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden sm:table-cell">
+                        {booking.guest?.name}
+                      </td>
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
+                        {booking.check_out_date ? formatDate(booking.check_out_date) : 'N/A'}
+                      </td>
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {formatCurrency(Number(booking.total_amount))}
+                      </td>
+                      <td className="px-3 sm:px-6 py-4 text-sm">
+                        <Button
+                          variant="secondary"
+                          onClick={() => handleGenerateBill(booking)}
+                          className="text-xs px-3 py-2"
+                        >
+                          Generate Bill
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Rooms Requiring Cleaning Section */}
       <div>

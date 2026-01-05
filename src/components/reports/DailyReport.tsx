@@ -4,7 +4,8 @@ import { formatCurrency, formatDate } from '../../lib/utils';
 import { format } from 'date-fns';
 import { Input } from '../common/Input';
 import { Button } from '../common/Button';
-import { exportToExcel, printReport } from '../../lib/exportUtils';
+import { exportToExcelDetailed, printReport } from '../../lib/exportUtils';
+import { generateBillPDF } from '../../lib/billGenerator';
 import type { Booking } from '../../lib/types';
 
 export function DailyReport() {
@@ -20,15 +21,12 @@ export function DailyReport() {
   const handleExportExcel = () => {
     if (!reportData || !reportData.bookings) return;
     
-    exportToExcel(
+    // Use detailed export format matching the guest register
+    exportToExcelDetailed(
       reportData.bookings as Booking[],
       `daily-report-${selectedDate}`,
-      {
-        totalBookings: reportData.totalBookings,
-        totalRevenue: reportData.totalRevenue,
-        occupancyRate: reportData.occupancyRate,
-        dateRange: format(new Date(selectedDate), 'MMM dd, yyyy'),
-      }
+      format(new Date(selectedDate), 'MMMM yyyy'),
+      'Eesha Residency'
     );
   };
 
@@ -39,17 +37,24 @@ export function DailyReport() {
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-4 items-end">
-        <Input
-          label="Select Date"
-          type="date"
-          value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-          className="flex-1"
-        />
-        <Button onClick={handleGenerate} disabled={loading}>
-          {loading ? 'Generating...' : 'Generate Report'}
-        </Button>
+      <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row gap-4 sm:items-end">
+          <div className="flex-1 w-full">
+            <Input
+              label="Select Date"
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+            />
+          </div>
+          <Button 
+            onClick={handleGenerate} 
+            disabled={loading}
+            className="w-full sm:w-auto min-h-[44px]"
+          >
+            {loading ? 'Generating...' : 'Generate Report'}
+          </Button>
+        </div>
       </div>
 
       {reportData && (
@@ -117,15 +122,24 @@ export function DailyReport() {
                         Check-In
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        QR
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Cash
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                         Amount Paid
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                         Status
                       </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Action
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {reportData.bookings.map((booking: any) => (
+                    {reportData.bookings.map((booking: Booking) => (
                       <tr key={booking.id}>
                         <td className="px-4 py-3 text-sm text-gray-900">
                           {booking.room?.room_number}
@@ -136,6 +150,12 @@ export function DailyReport() {
                         <td className="px-4 py-3 text-sm text-gray-500">
                           {formatDate(booking.check_in_date)}
                         </td>
+                        <td className="px-4 py-3 text-sm text-blue-600">
+                          {formatCurrency(booking.qr_amount || 0)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-green-600">
+                          {formatCurrency(booking.cash_amount || 0)}
+                        </td>
                         <td className="px-4 py-3 text-sm text-gray-500">
                           {formatCurrency(booking.amount_paid)}
                         </td>
@@ -145,10 +165,21 @@ export function DailyReport() {
                               ? 'bg-green-100 text-green-800'
                               : booking.status === 'checked_out'
                               ? 'bg-blue-100 text-blue-800'
+                              : booking.status === 'cancelled'
+                              ? 'bg-red-100 text-red-800'
                               : 'bg-gray-100 text-gray-800'
                           }`}>
                             {booking.status}
                           </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <Button
+                            variant="secondary"
+                            onClick={() => generateBillPDF(booking)}
+                            className="text-xs px-2 py-1"
+                          >
+                            Generate Bill
+                          </Button>
                         </td>
                       </tr>
                     ))}

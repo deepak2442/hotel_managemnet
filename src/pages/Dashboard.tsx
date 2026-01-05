@@ -40,11 +40,11 @@ export function Dashboard() {
     setShowPaymentModal(true);
   };
 
-  const confirmPayment = async (amount: number) => {
+  const confirmPayment = async (paymentData: { qrAmount: number; cashAmount: number }) => {
     if (!selectedBooking) return;
 
     setProcessing(true);
-    const { error } = await updatePayment(selectedBooking.id, amount);
+    const { error } = await updatePayment(selectedBooking.id, paymentData);
 
     if (error) {
       alert(`Error: ${error}`);
@@ -66,32 +66,32 @@ export function Dashboard() {
 
   return (
     <div>
-      <h1 className="text-3xl font-bold text-gray-900 mb-6">Dashboard</h1>
+      <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 sm:mb-6">Dashboard</h1>
       
       {/* Room Status Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-700">Total Rooms</h3>
-          <p className="text-3xl font-bold text-blue-600 mt-2">{totalRooms}</p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
+        <div className="bg-white p-4 sm:p-6 rounded-lg shadow hover:shadow-md transition-shadow">
+          <h3 className="text-sm sm:text-lg font-semibold text-gray-700">Total Rooms</h3>
+          <p className="text-2xl sm:text-3xl font-bold text-blue-600 mt-2">{totalRooms}</p>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-700">Available</h3>
-          <p className="text-3xl font-bold text-green-600 mt-2">{availableRooms}</p>
+        <div className="bg-white p-4 sm:p-6 rounded-lg shadow hover:shadow-md transition-shadow">
+          <h3 className="text-sm sm:text-lg font-semibold text-gray-700">Available</h3>
+          <p className="text-2xl sm:text-3xl font-bold text-green-600 mt-2">{availableRooms}</p>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-700">Occupied</h3>
-          <p className="text-3xl font-bold text-red-600 mt-2">{occupiedRooms}</p>
+        <div className="bg-white p-4 sm:p-6 rounded-lg shadow hover:shadow-md transition-shadow">
+          <h3 className="text-sm sm:text-lg font-semibold text-gray-700">Occupied</h3>
+          <p className="text-2xl sm:text-3xl font-bold text-red-600 mt-2">{occupiedRooms}</p>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-700">Cleaning</h3>
-          <p className="text-3xl font-bold text-yellow-600 mt-2">{cleaningRooms}</p>
+        <div className="bg-white p-4 sm:p-6 rounded-lg shadow hover:shadow-md transition-shadow">
+          <h3 className="text-sm sm:text-lg font-semibold text-gray-700">Cleaning</h3>
+          <p className="text-2xl sm:text-3xl font-bold text-yellow-600 mt-2">{cleaningRooms}</p>
         </div>
       </div>
 
       {/* Today's Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-700 mb-4">Today's Summary</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
+        <div className="bg-white p-4 sm:p-6 rounded-lg shadow">
+          <h3 className="text-base sm:text-lg font-semibold text-gray-700 mb-3 sm:mb-4">Today's Summary</h3>
           <div className="space-y-3">
             <div className="flex justify-between">
               <span className="text-gray-600">Check-ins Today:</span>
@@ -116,24 +116,24 @@ export function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-700 mb-4">Quick Actions</h3>
+        <div className="bg-white p-4 sm:p-6 rounded-lg shadow">
+          <h3 className="text-base sm:text-lg font-semibold text-gray-700 mb-3 sm:mb-4">Quick Actions</h3>
           <div className="space-y-2">
             <a
               href="/check-in"
-              className="block w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-center hover:bg-blue-700 transition-colors"
+              className="block w-full px-4 py-3 bg-blue-600 text-white rounded-lg text-center hover:bg-blue-700 transition-colors font-medium"
             >
               Check-In Guest
             </a>
             <a
               href="/check-out"
-              className="block w-full px-4 py-2 bg-red-600 text-white rounded-lg text-center hover:bg-red-700 transition-colors"
+              className="block w-full px-4 py-3 bg-red-600 text-white rounded-lg text-center hover:bg-red-700 transition-colors font-medium"
             >
               Check-Out Guest
             </a>
             <a
               href="/reports"
-              className="block w-full px-4 py-2 bg-gray-600 text-white rounded-lg text-center hover:bg-gray-700 transition-colors"
+              className="block w-full px-4 py-3 bg-gray-600 text-white rounded-lg text-center hover:bg-gray-700 transition-colors font-medium"
             >
               View Reports
             </a>
@@ -143,9 +143,9 @@ export function Dashboard() {
 
       {/* Outstanding Payments Section */}
       {bookingsWithOutstanding.length > 0 && (
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-800">
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-4">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-800">
               Outstanding Payments ({bookingsWithOutstanding.length})
             </h2>
             <div className="text-sm text-gray-600">
@@ -153,28 +153,35 @@ export function Dashboard() {
             </div>
           </div>
           <div className="bg-white rounded-lg shadow overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Room
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
                     Guest
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                     Check-in
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
                     Total Amount
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Amount Paid
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
+                    QR
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
+                    Cash
+                  </th>
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Paid
+                  </th>
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Outstanding
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Action
                   </th>
                 </tr>
@@ -184,32 +191,42 @@ export function Dashboard() {
                   const outstanding = Number(booking.total_amount) - Number(booking.amount_paid);
                   return (
                     <tr key={booking.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {booking.room?.room_number}
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        <div className="flex flex-col">
+                          <span>{booking.room?.room_number}</span>
+                          <span className="text-xs text-gray-500 sm:hidden">{booking.guest?.name}</span>
+                        </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden sm:table-cell">
                         {booking.guest?.name}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
                         {formatDate(booking.check_in_date)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden lg:table-cell">
                         {formatCurrency(Number(booking.total_amount))}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-blue-600 hidden lg:table-cell">
+                        {formatCurrency(Number(booking.qr_amount || 0))}
+                      </td>
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-green-600 hidden lg:table-cell">
+                        {formatCurrency(Number(booking.cash_amount || 0))}
+                      </td>
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-green-600">
                         {formatCurrency(Number(booking.amount_paid))}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-red-600">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-semibold text-red-600">
                         {formatCurrency(outstanding)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm">
                         <Button
                           variant="primary"
                           onClick={() => handleAddPayment(booking)}
                           disabled={processing}
-                          className="text-xs"
+                          className="text-xs px-3 py-2 min-h-[44px]"
                         >
-                          Add Payment
+                          <span className="hidden sm:inline">Add Payment</span>
+                          <span className="sm:hidden">Pay</span>
                         </Button>
                       </td>
                     </tr>
@@ -217,6 +234,7 @@ export function Dashboard() {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}

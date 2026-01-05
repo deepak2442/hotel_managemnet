@@ -3,7 +3,7 @@ export type RoomType = 'standard' | 'deluxe' | 'cottage' | 'dormitory';
 export type Floor = 'ground' | 'first' | 'cottage';
 export type ProofType = 'aadhar' | 'pan' | 'driving_license';
 export type BookingStatus = 'checked_in' | 'checked_out' | 'cancelled' | 'reserved';
-export type PaymentMethod = 'cash';
+export type PaymentMethod = 'cash' | 'qr' | 'mixed';
 
 export interface Room {
   id: string;
@@ -42,6 +42,13 @@ export interface Booking {
   total_amount: number;
   amount_paid: number;
   payment_method: PaymentMethod;
+  qr_amount: number;
+  cash_amount: number;
+  extended_amount: number;
+  cancellation_charge: number;
+  refund_amount: number;
+  cancelled_at: string | null;
+  gstin?: string | null;
   status: BookingStatus;
   created_at: string;
   updated_at: string;
@@ -74,11 +81,13 @@ export interface CheckInFormData {
   proofNumber: string;
   phone?: string;
   email?: string;
+  gstin?: string;
   numberOfGuests: number;
   checkInDate: string;
   checkOutDate?: string;
   baseAmount: number;
   gstRate: number;
-  amountPaid: number;
+  qrAmount: number;
+  cashAmount: number;
 }
 

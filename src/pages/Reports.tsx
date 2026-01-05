@@ -11,24 +11,25 @@ export function Reports() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-4">Reports</h1>
-        <div className="flex gap-2 flex-wrap">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4">Reports</h1>
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setReportType('daterange')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`px-3 sm:px-4 py-2.5 rounded-lg font-medium transition-colors min-h-[44px] text-sm sm:text-base ${
               reportType === 'daterange'
-                ? 'bg-blue-600 text-white'
+                ? 'bg-blue-600 text-white shadow'
                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
             }`}
           >
-            Date Range Report
+            <span className="hidden sm:inline">Date Range Report</span>
+            <span className="sm:hidden">Date Range</span>
           </button>
           <button
             onClick={() => setReportType('daily')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`px-3 sm:px-4 py-2.5 rounded-lg font-medium transition-colors min-h-[44px] text-sm sm:text-base ${
               reportType === 'daily'
-                ? 'bg-blue-600 text-white'
+                ? 'bg-blue-600 text-white shadow'
                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
             }`}
           >
@@ -36,9 +37,9 @@ export function Reports() {
           </button>
           <button
             onClick={() => setReportType('monthly')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`px-3 sm:px-4 py-2.5 rounded-lg font-medium transition-colors min-h-[44px] text-sm sm:text-base ${
               reportType === 'monthly'
-                ? 'bg-blue-600 text-white'
+                ? 'bg-blue-600 text-white shadow'
                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
             }`}
           >
@@ -46,9 +47,9 @@ export function Reports() {
           </button>
           <button
             onClick={() => setReportType('yearly')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`px-3 sm:px-4 py-2.5 rounded-lg font-medium transition-colors min-h-[44px] text-sm sm:text-base ${
               reportType === 'yearly'
-                ? 'bg-blue-600 text-white'
+                ? 'bg-blue-600 text-white shadow'
                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
             }`}
           >

@@ -9,6 +9,7 @@ import { CheckIn } from './pages/CheckIn';
 import { CheckOut } from './pages/CheckOut';
 import { Reports } from './pages/Reports';
 import { AdvanceBookings } from './pages/AdvanceBookings';
+import { MaintenanceReportPage } from './pages/MaintenanceReport';
 
 function App() {
   return (
@@ -72,6 +73,16 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <AdvanceBookings />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/maintenance-report"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <MaintenanceReportPage />
                 </Layout>
               </ProtectedRoute>
             }

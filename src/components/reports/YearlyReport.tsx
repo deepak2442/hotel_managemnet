@@ -31,19 +31,26 @@ export function YearlyReport() {
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-4 items-end">
-        <Input
-          label="Select Year"
-          type="number"
-          value={selectedYear}
-          onChange={(e) => setSelectedYear(e.target.value)}
-          min="2020"
-          max={new Date().getFullYear()}
-          className="flex-1"
-        />
-        <Button onClick={handleGenerate} disabled={loading}>
-          {loading ? 'Generating...' : 'Generate Report'}
-        </Button>
+      <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row gap-4 sm:items-end">
+          <div className="flex-1 w-full">
+            <Input
+              label="Select Year"
+              type="number"
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value)}
+              min="2020"
+              max={new Date().getFullYear()}
+            />
+          </div>
+          <Button 
+            onClick={handleGenerate} 
+            disabled={loading}
+            className="w-full sm:w-auto min-h-[44px]"
+          >
+            {loading ? 'Generating...' : 'Generate Report'}
+          </Button>
+        </div>
       </div>
 
       {reportData && (

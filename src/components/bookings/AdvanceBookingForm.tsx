@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import type { Room, ProofType } from '../../lib/types';
+import type { Room, ProofType, Booking } from '../../lib/types';
 import { Input } from '../common/Input';
 import { Button } from '../common/Button';
 import { useGuests } from '../../hooks/useGuests';
@@ -19,12 +19,14 @@ type AdvanceBookingFormData = {
   proofNumber?: string;
   phone?: string;
   email?: string;
+  gstin?: string;
   numberOfGuests: number;
   checkInDate: string;
   checkOutDate?: string;
   baseAmount: number;
   gstRate: number;
-  amountPaid: number;
+  qrAmount: number;
+  cashAmount: number;
 };
 
 const advanceBookingSchema = z.object({
@@ -35,12 +37,14 @@ const advanceBookingSchema = z.object({
   proofNumber: z.string().optional(),
   phone: z.string().optional(),
   email: z.string().email('Invalid email').optional().or(z.literal('')),
+  gstin: z.string().optional(),
   numberOfGuests: z.number().min(1),
   checkInDate: z.string().min(1, 'Check-in date is required'),
   checkOutDate: z.string().optional(),
   baseAmount: z.number().min(0, 'Base amount must be positive'),
   gstRate: z.number().min(0).max(100),
-  amountPaid: z.number().min(0, 'Amount paid must be positive'),
+  qrAmount: z.number().min(0, 'QR amount must be positive'),
+  cashAmount: z.number().min(0, 'Cash amount must be positive'),
 }).refine((data) => {
   const today = new Date().toISOString().split('T')[0];
   return data.checkInDate > today;
@@ -66,15 +70,29 @@ interface AdvanceBookingFormProps {
   rooms: Room[];
   onSuccess: () => void;
   onCancel: () => void;
+  booking?: Booking | null; // If provided, form is in edit mode
 }
 
-export function AdvanceBookingForm({ rooms, onSuccess, onCancel }: AdvanceBookingFormProps) {
-  const { createGuest } = useGuests();
-  const { createBooking } = useBookings();
+export function AdvanceBookingForm({ rooms, onSuccess, onCancel, booking }: AdvanceBookingFormProps) {
+  const { createGuest, updateGuest } = useGuests();
+  const { createBooking, updateAdvanceBooking } = useBookings();
   const { getGSTRate } = useSettings();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [applyGST, setApplyGST] = useState(true);
+  const isEditMode = !!booking;
+  
+  // Determine initial payment mode from existing booking
+  const getInitialPaymentMode = (): 'cash' | 'qr' | 'mixed' => {
+    if (!booking) return 'cash';
+    const qr = Number(booking.qr_amount || 0);
+    const cash = Number(booking.cash_amount || 0);
+    if (qr > 0 && cash > 0) return 'mixed';
+    if (qr > 0) return 'qr';
+    return 'cash';
+  };
+
+  const [applyGST, setApplyGST] = useState(booking ? Number(booking.gst_rate || 0) > 0 : true);
+  const [paymentMode, setPaymentMode] = useState<'cash' | 'qr' | 'mixed'>(getInitialPaymentMode());
 
   const defaultGSTRate = getGSTRate();
 
@@ -102,14 +120,21 @@ export function AdvanceBookingForm({ rooms, onSuccess, onCancel }: AdvanceBookin
   } = useForm<AdvanceBookingFormData>({
     resolver: zodResolver(advanceBookingSchema),
     defaultValues: {
-      roomId: '',
-      proofType: undefined,
-      proofNumber: '',
-      numberOfGuests: 1,
-      checkInDate: getTomorrowDate(),
-      baseAmount: 0,
-      gstRate: defaultGSTRate,
-      amountPaid: 0,
+      roomId: booking?.room_id || '',
+      guestName: booking?.guest?.name || '',
+      address: booking?.guest?.address || '',
+      proofType: (booking?.guest?.proof_type as ProofType | undefined) || undefined,
+      proofNumber: booking?.guest?.proof_number || '',
+      phone: booking?.guest?.phone || '',
+      email: booking?.guest?.email || '',
+      gstin: booking?.gstin || '',
+      numberOfGuests: booking?.number_of_guests || 1,
+      checkInDate: booking?.check_in_date || getTomorrowDate(),
+      checkOutDate: booking?.check_out_date || undefined,
+      baseAmount: booking?.base_amount || 0,
+      gstRate: booking?.gst_rate || defaultGSTRate,
+      qrAmount: booking?.qr_amount || 0,
+      cashAmount: booking?.cash_amount || 0,
     },
   });
 
@@ -118,6 +143,9 @@ export function AdvanceBookingForm({ rooms, onSuccess, onCancel }: AdvanceBookin
   const checkInDate = watch('checkInDate');
   const baseAmount = watch('baseAmount');
   const gstRate = watch('gstRate');
+  const qrAmount = watch('qrAmount') || 0;
+  const cashAmount = watch('cashAmount') || 0;
+  const totalPaid = qrAmount + cashAmount;
 
   // Auto-calculate checkout date when check-in date changes
   useEffect(() => {
@@ -159,58 +187,128 @@ export function AdvanceBookingForm({ rooms, onSuccess, onCancel }: AdvanceBookin
       return;
     }
 
+    // Validate payment amounts
+    const finalTotalAmount = applyGST ? totalAmount : (data.baseAmount || 0);
+    const totalPayment = (data.qrAmount || 0) + (data.cashAmount || 0);
+    if (totalPayment > finalTotalAmount) {
+      setError(`Total payment (${formatCurrency(totalPayment)}) cannot exceed total amount (${formatCurrency(finalTotalAmount)})`);
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
 
     try {
-      // Create guest
       // Handle empty strings from form fields
       const proofType = data.proofType && data.proofType.trim() !== '' ? data.proofType : undefined;
       const proofNumber = data.proofNumber && data.proofNumber.trim() !== '' ? data.proofNumber : undefined;
-      
-      const { data: guestData, error: guestError } = await createGuest({
-        name: data.guestName,
-        address: data.address,
-        proof_type: proofType,
-        proof_number: proofNumber,
-        phone: data.phone && data.phone.trim() !== '' ? data.phone : undefined,
-        email: data.email && data.email.trim() !== '' ? data.email : undefined,
-      });
 
-      if (guestError || !guestData) {
-        throw new Error(guestError || 'Failed to create guest');
-      }
+      if (isEditMode && booking) {
+        // Edit mode: Update existing booking and guest
+        // Update guest information
+        const { error: guestError } = await updateGuest(booking.guest_id, {
+          name: data.guestName,
+          address: data.address,
+          proof_type: proofType || null,
+          proof_number: proofNumber || null,
+          phone: data.phone && data.phone.trim() !== '' ? data.phone : null,
+          email: data.email && data.email.trim() !== '' ? data.email : null,
+        });
 
-      // Calculate default checkout if not provided
-      const checkoutDate = data.checkOutDate || calculateDefaultCheckoutDate(data.checkInDate);
+        if (guestError) {
+          throw new Error(guestError);
+        }
 
-      // Create booking - always as advance booking
-      const finalGSTRate = applyGST ? data.gstRate : 0;
-      const finalGSTAmount = applyGST ? gstAmount : 0;
-      const finalTotalAmount = applyGST ? totalAmount : (data.baseAmount || 0);
+        // Calculate default checkout if not provided
+        const checkoutDate = data.checkOutDate || calculateDefaultCheckoutDate(data.checkInDate);
 
-      const { error: bookingError } = await createBooking({
-        room_id: selectedRoom.id,
-        guest_id: guestData.id,
-        check_in_date: data.checkInDate,
-        check_out_date: checkoutDate,
-        actual_check_in_time: null, // Will be set when confirmed
-        number_of_guests: data.numberOfGuests,
-        base_amount: data.baseAmount,
-        gst_rate: finalGSTRate,
-        gst_amount: finalGSTAmount,
-        total_amount: finalTotalAmount,
-        amount_paid: data.amountPaid,
-        isAdvanceBooking: true,
-      });
+        // Calculate amounts
+        const finalGSTRate = applyGST ? data.gstRate : 0;
+        const finalGSTAmount = applyGST ? gstAmount : 0;
+        const finalTotalAmount = applyGST ? totalAmount : (data.baseAmount || 0);
+        const qrAmount = data.qrAmount || 0;
+        const cashAmount = data.cashAmount || 0;
+        const amountPaid = qrAmount + cashAmount;
 
-      if (bookingError) {
-        throw new Error(bookingError);
+        // Determine payment method
+        let paymentMethod: 'cash' | 'qr' | 'mixed' = 'cash';
+        if (qrAmount > 0 && cashAmount > 0) {
+          paymentMethod = 'mixed';
+        } else if (qrAmount > 0) {
+          paymentMethod = 'qr';
+        }
+
+        // Update booking
+        const { error: bookingError } = await updateAdvanceBooking(booking.id, {
+          room_id: selectedRoom.id,
+          check_in_date: data.checkInDate,
+          check_out_date: checkoutDate,
+          number_of_guests: data.numberOfGuests,
+          base_amount: data.baseAmount,
+          gst_rate: finalGSTRate,
+          gst_amount: finalGSTAmount,
+          total_amount: finalTotalAmount,
+          amount_paid: amountPaid,
+          qr_amount: qrAmount,
+          cash_amount: cashAmount,
+          payment_method: paymentMethod,
+        });
+
+        if (bookingError) {
+          throw new Error(bookingError);
+        }
+      } else {
+        // Create mode: Create new guest and booking
+        const { data: guestData, error: guestError } = await createGuest({
+          name: data.guestName,
+          address: data.address,
+          proof_type: proofType,
+          proof_number: proofNumber,
+          phone: data.phone && data.phone.trim() !== '' ? data.phone : undefined,
+          email: data.email && data.email.trim() !== '' ? data.email : undefined,
+        });
+
+        if (guestError || !guestData) {
+          throw new Error(guestError || 'Failed to create guest');
+        }
+
+        // Calculate default checkout if not provided
+        const checkoutDate = data.checkOutDate || calculateDefaultCheckoutDate(data.checkInDate);
+
+        // Create booking - always as advance booking
+        const finalGSTRate = applyGST ? data.gstRate : 0;
+        const finalGSTAmount = applyGST ? gstAmount : 0;
+        const finalTotalAmount = applyGST ? totalAmount : (data.baseAmount || 0);
+        const qrAmount = data.qrAmount || 0;
+        const cashAmount = data.cashAmount || 0;
+        const amountPaid = qrAmount + cashAmount;
+
+        const { error: bookingError } = await createBooking({
+          room_id: selectedRoom.id,
+          guest_id: guestData.id,
+          check_in_date: data.checkInDate,
+          check_out_date: checkoutDate,
+          actual_check_in_time: null, // Will be set when confirmed
+          number_of_guests: data.numberOfGuests,
+          base_amount: data.baseAmount,
+          gst_rate: finalGSTRate,
+          gst_amount: finalGSTAmount,
+          total_amount: finalTotalAmount,
+          amount_paid: amountPaid,
+          qr_amount: qrAmount,
+          cash_amount: cashAmount,
+          gstin: data.gstin || null,
+          isAdvanceBooking: true,
+        });
+
+        if (bookingError) {
+          throw new Error(bookingError);
+        }
       }
 
       onSuccess();
     } catch (err: any) {
-      setError(err.message || 'Failed to create advance booking');
+      setError(err.message || (isEditMode ? 'Failed to update advance booking' : 'Failed to create advance booking'));
     } finally {
       setSubmitting(false);
     }
@@ -224,9 +322,13 @@ export function AdvanceBookingForm({ rooms, onSuccess, onCancel }: AdvanceBookin
         </div>
       )}
 
-      <div className="bg-purple-50 border border-purple-200 p-4 rounded mb-4">
-        <p className="font-medium text-purple-900">📅 Advance Booking</p>
-        <p className="text-sm text-purple-700">This booking will be reserved for a future date</p>
+      <div className={`border p-4 rounded mb-4 ${isEditMode ? 'bg-blue-50 border-blue-200' : 'bg-purple-50 border-purple-200'}`}>
+        <p className={`font-medium ${isEditMode ? 'text-blue-900' : 'text-purple-900'}`}>
+          {isEditMode ? '✏️ Edit Advance Booking' : '📅 Advance Booking'}
+        </p>
+        <p className={`text-sm ${isEditMode ? 'text-blue-700' : 'text-purple-700'}`}>
+          {isEditMode ? 'Update booking details below' : 'This booking will be reserved for a future date'}
+        </p>
       </div>
 
       {/* Room Selection */}
@@ -324,6 +426,13 @@ export function AdvanceBookingForm({ rooms, onSuccess, onCancel }: AdvanceBookin
         />
       </div>
 
+      <Input
+        label="GSTIN (Optional)"
+        placeholder="Enter GSTIN if billing on company name"
+        {...register('gstin')}
+        error={errors.gstin?.message}
+      />
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Input
           label="Check-in Date *"
@@ -402,14 +511,86 @@ export function AdvanceBookingForm({ rooms, onSuccess, onCancel }: AdvanceBookin
         </div>
 
         <div className="mt-4">
-          <Input
-            label="Advance Amount Paid (₹) *"
-            type="number"
-            step="0.01"
-            min={0}
-            {...register('amountPaid', { valueAsNumber: true })}
-            error={errors.amountPaid?.message}
-          />
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Payment Mode *
+          </label>
+          <select
+            value={paymentMode}
+            onChange={(e) => {
+              const mode = e.target.value as 'cash' | 'qr' | 'mixed';
+              setPaymentMode(mode);
+              // Reset amounts when mode changes
+              setValue('qrAmount', 0);
+              setValue('cashAmount', 0);
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="cash">Cash Only</option>
+            <option value="qr">QR Only</option>
+            <option value="mixed">Mixed (Cash + QR)</option>
+          </select>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          {(paymentMode === 'qr' || paymentMode === 'mixed') && (
+            <Input
+              label="QR Payment (₹) *"
+              type="number"
+              step="0.01"
+              min={0}
+              {...register('qrAmount', { valueAsNumber: true })}
+              error={errors.qrAmount?.message}
+            />
+          )}
+          {(paymentMode === 'cash' || paymentMode === 'mixed') && (
+            <Input
+              label="Cash Payment (₹) *"
+              type="number"
+              step="0.01"
+              min={0}
+              {...register('cashAmount', { valueAsNumber: true })}
+              error={errors.cashAmount?.message}
+            />
+          )}
+          {paymentMode === 'qr' && (
+            <div className="hidden md:block"></div>
+          )}
+        </div>
+
+        <div className="mt-4 bg-blue-50 p-4 rounded-lg space-y-2">
+          {paymentMode === 'qr' && (
+            <div className="flex justify-between">
+              <span className="font-medium">QR Payment:</span>
+              <span>{formatCurrency(qrAmount)}</span>
+            </div>
+          )}
+          {paymentMode === 'cash' && (
+            <div className="flex justify-between">
+              <span className="font-medium">Cash Payment:</span>
+              <span>{formatCurrency(cashAmount)}</span>
+            </div>
+          )}
+          {paymentMode === 'mixed' && (
+            <>
+              <div className="flex justify-between">
+                <span className="font-medium">QR Payment:</span>
+                <span>{formatCurrency(qrAmount)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-medium">Cash Payment:</span>
+                <span>{formatCurrency(cashAmount)}</span>
+              </div>
+            </>
+          )}
+          <div className="flex justify-between text-lg font-bold border-t pt-2">
+            <span>Total Paid:</span>
+            <span>{formatCurrency(totalPaid)}</span>
+          </div>
+          {totalPaid > (applyGST ? totalAmount : (baseAmount || 0)) && (
+            <p className="text-sm text-red-600 mt-2">
+              ⚠️ Total payment exceeds total amount
+            </p>
+          )}
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 import type { Booking } from '../../lib/types';
 import { Button } from '../common/Button';
 import { formatCurrency, formatDate } from '../../lib/utils';
+import { generateBillPDF } from '../../lib/billGenerator';
 
 interface CheckOutModalProps {
   booking: Booking;
@@ -59,6 +60,14 @@ export function CheckOutModal({ booking, onConfirm, onCancel, loading }: CheckOu
       </div>
 
       <div className="flex gap-4 pt-4">
+        <Button
+          variant="secondary"
+          onClick={() => generateBillPDF(booking)}
+          disabled={loading}
+          className="flex-1"
+        >
+          Generate Bill
+        </Button>
         <Button
           variant="danger"
           onClick={onConfirm}

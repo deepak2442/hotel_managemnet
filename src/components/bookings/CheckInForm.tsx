@@ -18,13 +18,18 @@ const checkInSchema = z.object({
   proofNumber: z.string().min(1, 'Proof number is required'),
   phone: z.string().optional(),
   email: z.string().email('Invalid email').optional().or(z.literal('')),
+  gstin: z.string().optional(),
   numberOfGuests: z.number().min(1).max(2),
   checkInDate: z.string().min(1, 'Check-in date is required'),
   actualCheckInTime: z.string().optional(),
   checkOutDate: z.string().optional(),
   baseAmount: z.number().min(0, 'Base amount must be positive'),
   gstRate: z.number().min(0).max(100),
-  amountPaid: z.number().min(0, 'Amount paid must be positive'),
+  qrAmount: z.number().min(0, 'QR amount must be positive'),
+  cashAmount: z.number().min(0, 'Cash amount must be positive'),
+}).refine(() => {
+  // This will be validated in the component with total amount
+  return true;
 });
 
 interface CheckInFormProps {
@@ -40,6 +45,7 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [applyGST, setApplyGST] = useState(true); // Toggle for GST
+  const [paymentMode, setPaymentMode] = useState<'cash' | 'qr' | 'mixed'>('cash');
 
   const defaultGSTRate = getGSTRate();
 
@@ -55,10 +61,19 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
       proofType: 'aadhar',
       numberOfGuests: 1,
       checkInDate: getTodayDate(),
-      actualCheckInTime: new Date().toISOString().slice(0, 16), // YYYY-MM-DDTHH:mm format
+      actualCheckInTime: (() => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+      })(),
       baseAmount: 0,
       gstRate: defaultGSTRate,
-      amountPaid: 0,
+      qrAmount: 0,
+      cashAmount: 0,
     },
   });
 
@@ -69,16 +84,32 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
     if (checkInDate) {
       const defaultCheckout = calculateDefaultCheckoutDate(checkInDate);
       setValue('checkOutDate', defaultCheckout);
+      
+      // If check-in date is today or in the past, set current time as default
+      const today = getTodayDate();
+      if (checkInDate <= today) {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const currentTime = `${year}-${month}-${day}T${hours}:${minutes}`;
+        setValue('actualCheckInTime', currentTime);
+      }
     }
   }, [checkInDate, setValue]);
 
   const baseAmount = watch('baseAmount');
   const gstRate = watch('gstRate');
+  const qrAmount = watch('qrAmount') || 0;
+  const cashAmount = watch('cashAmount') || 0;
   
   // Calculate GST only if applyGST is enabled
   const effectiveGSTRate = applyGST ? (gstRate || defaultGSTRate) : 0;
   const gstAmount = applyGST ? calculateGST(baseAmount || 0, effectiveGSTRate) : 0;
   const totalAmount = calculateTotal(baseAmount || 0, gstAmount);
+  const totalPaid = qrAmount + cashAmount;
 
   useEffect(() => {
     if (applyGST) {
@@ -90,7 +121,8 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
 
   const onSubmit = async (data: CheckInFormData & { actualCheckInTime?: string }) => {
     // Check if it's an advance booking
-    const today = new Date().toISOString().split('T')[0];
+    // Use getTodayDate() for consistent date comparison (local time, not UTC)
+    const today = getTodayDate();
     const isAdvanceBooking = data.checkInDate > today;
 
     // For advance bookings, room can be available or occupied (but not cleaning/maintenance)
@@ -107,6 +139,14 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
 
     if (data.numberOfGuests > room.max_occupancy) {
       setError(`Maximum ${room.max_occupancy} guests allowed in this room`);
+      return;
+    }
+
+    // Validate payment amounts
+    const finalTotalAmount = applyGST ? totalAmount : (data.baseAmount || 0);
+    const totalPayment = (data.qrAmount || 0) + (data.cashAmount || 0);
+    if (totalPayment > finalTotalAmount) {
+      setError(`Total payment (${formatCurrency(totalPayment)}) cannot exceed total amount (${formatCurrency(finalTotalAmount)})`);
       return;
     }
 
@@ -153,6 +193,9 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
       const finalGSTRate = applyGST ? data.gstRate : 0;
       const finalGSTAmount = applyGST ? gstAmount : 0;
       const finalTotalAmount = applyGST ? totalAmount : (data.baseAmount || 0);
+      const qrAmount = data.qrAmount || 0;
+      const cashAmount = data.cashAmount || 0;
+      const amountPaid = qrAmount + cashAmount;
 
       const { error: bookingError } = await createBooking({
         room_id: room.id,
@@ -165,7 +208,10 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
         gst_rate: finalGSTRate,
         gst_amount: finalGSTAmount,
         total_amount: finalTotalAmount,
-        amount_paid: data.amountPaid,
+        amount_paid: amountPaid,
+        qr_amount: qrAmount,
+        cash_amount: cashAmount,
+        gstin: data.gstin || null,
         isAdvanceBooking,
       });
 
@@ -181,7 +227,7 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
             data.phone!,
             data.guestName,
             room.room_number,
-            data.amountPaid
+            amountPaid
           );
         }, 500);
       }
@@ -265,12 +311,19 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
         />
       </div>
 
+      <Input
+        label="GSTIN (Optional)"
+        placeholder="Enter GSTIN if billing on company name"
+        {...register('gstin')}
+        error={errors.gstin?.message}
+      />
+
       <div className="bg-yellow-50 border border-yellow-200 p-3 rounded mb-4">
         <p className="text-sm text-yellow-800">
           <strong>24-Hour Billing:</strong> Check-in is normalized to 12:00 PM (noon) for billing purposes. 
           Checkout is by default next day at 12:00 PM. If checkout is after 12:00 PM, it's charged as 2 days.
         </p>
-        {checkInDate && checkInDate > new Date().toISOString().split('T')[0] && (
+        {checkInDate && checkInDate > getTodayDate() && (
           <p className="text-sm text-blue-800 mt-2 font-semibold">
             ⚠️ This is an <strong>Advance Booking</strong>. Advance payment will be collected now.
           </p>
@@ -286,14 +339,36 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
           error={errors.checkInDate?.message}
         />
         {checkInDate && checkInDate <= new Date().toISOString().split('T')[0] && (
-          <Input
-            label="Actual Arrival Time (Optional)"
-            type="datetime-local"
-            {...register('actualCheckInTime')}
-            error={errors.actualCheckInTime?.message}
-          />
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-700">
+                Actual Arrival Time (Optional)
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  const now = new Date();
+                  const year = now.getFullYear();
+                  const month = String(now.getMonth() + 1).padStart(2, '0');
+                  const day = String(now.getDate()).padStart(2, '0');
+                  const hours = String(now.getHours()).padStart(2, '0');
+                  const minutes = String(now.getMinutes()).padStart(2, '0');
+                  const currentTime = `${year}-${month}-${day}T${hours}:${minutes}`;
+                  setValue('actualCheckInTime', currentTime);
+                }}
+                className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+              >
+                Set to Now
+              </button>
+            </div>
+            <Input
+              type="datetime-local"
+              {...register('actualCheckInTime')}
+              error={errors.actualCheckInTime?.message}
+            />
+          </div>
         )}
-        {checkInDate && checkInDate > new Date().toISOString().split('T')[0] && (
+        {checkInDate && checkInDate > getTodayDate() && (
           <div className="text-sm text-gray-600 pt-8">
             <p className="font-medium">Advance Booking:</p>
             <p>Room will be reserved. Guest will check in on {checkInDate}.</p>
@@ -376,14 +451,86 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
         </div>
 
         <div className="mt-4">
-          <Input
-            label="Amount Paid (₹) *"
-            type="number"
-            step="0.01"
-            min={0}
-            {...register('amountPaid', { valueAsNumber: true })}
-            error={errors.amountPaid?.message}
-          />
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Payment Mode *
+          </label>
+          <select
+            value={paymentMode}
+            onChange={(e) => {
+              const mode = e.target.value as 'cash' | 'qr' | 'mixed';
+              setPaymentMode(mode);
+              // Reset amounts when mode changes
+              setValue('qrAmount', 0);
+              setValue('cashAmount', 0);
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="cash">Cash Only</option>
+            <option value="qr">QR Only</option>
+            <option value="mixed">Mixed (Cash + QR)</option>
+          </select>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          {(paymentMode === 'qr' || paymentMode === 'mixed') && (
+            <Input
+              label="QR Payment (₹) *"
+              type="number"
+              step="0.01"
+              min={0}
+              {...register('qrAmount', { valueAsNumber: true })}
+              error={errors.qrAmount?.message}
+            />
+          )}
+          {(paymentMode === 'cash' || paymentMode === 'mixed') && (
+            <Input
+              label="Cash Payment (₹) *"
+              type="number"
+              step="0.01"
+              min={0}
+              {...register('cashAmount', { valueAsNumber: true })}
+              error={errors.cashAmount?.message}
+            />
+          )}
+          {paymentMode === 'qr' && (
+            <div className="hidden md:block"></div>
+          )}
+        </div>
+
+        <div className="mt-4 bg-blue-50 p-4 rounded-lg space-y-2">
+          {paymentMode === 'qr' && (
+            <div className="flex justify-between">
+              <span className="font-medium">QR Payment:</span>
+              <span>{formatCurrency(qrAmount)}</span>
+            </div>
+          )}
+          {paymentMode === 'cash' && (
+            <div className="flex justify-between">
+              <span className="font-medium">Cash Payment:</span>
+              <span>{formatCurrency(cashAmount)}</span>
+            </div>
+          )}
+          {paymentMode === 'mixed' && (
+            <>
+              <div className="flex justify-between">
+                <span className="font-medium">QR Payment:</span>
+                <span>{formatCurrency(qrAmount)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-medium">Cash Payment:</span>
+                <span>{formatCurrency(cashAmount)}</span>
+              </div>
+            </>
+          )}
+          <div className="flex justify-between text-lg font-bold border-t pt-2">
+            <span>Total Paid:</span>
+            <span>{formatCurrency(totalPaid)}</span>
+          </div>
+          {totalPaid > (applyGST ? totalAmount : (baseAmount || 0)) && (
+            <p className="text-sm text-red-600 mt-2">
+              ⚠️ Total payment exceeds total amount
+            </p>
+          )}
         </div>
       </div>
 
@@ -391,7 +538,7 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
         <Button type="submit" disabled={submitting} className="flex-1">
           {submitting 
             ? 'Processing...' 
-            : checkInDate && checkInDate > new Date().toISOString().split('T')[0]
+            : checkInDate && checkInDate > getTodayDate()
             ? 'Create Advance Booking'
             : 'Check In Guest'}
         </Button>
