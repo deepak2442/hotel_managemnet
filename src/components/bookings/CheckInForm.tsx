@@ -120,14 +120,16 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
   }, [defaultGSTRate, applyGST, setValue]);
 
   const onSubmit = async (data: CheckInFormData & { actualCheckInTime?: string }) => {
-    // Check if it's an advance booking
+    // Check if it's an advance booking or back-dated entry
     // Use getTodayDate() for consistent date comparison (local time, not UTC)
     const today = getTodayDate();
     const isAdvanceBooking = data.checkInDate > today;
+    const isBackDated = data.checkInDate < today;
 
+    // For back-dated entries, allow regardless of current room status (historical data entry)
     // For advance bookings, room can be available or occupied (but not cleaning/maintenance)
-    // For immediate check-ins, room must be available
-    if (!isAdvanceBooking && room.status !== 'available') {
+    // For immediate check-ins (today), room must be available
+    if (!isBackDated && !isAdvanceBooking && room.status !== 'available') {
       setError('Room is not available for check-in');
       return;
     }
@@ -328,13 +330,17 @@ export function CheckInForm({ room, onSuccess, onCancel }: CheckInFormProps) {
             ⚠️ This is an <strong>Advance Booking</strong>. Advance payment will be collected now.
           </p>
         )}
+        {checkInDate && checkInDate < getTodayDate() && (
+          <p className="text-sm text-purple-800 mt-2 font-semibold">
+            📅 This is a <strong>Back-Dated Entry</strong>. You can enter historical guest data for this month.
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Input
           label="Check-in Date *"
           type="date"
-          min={getTodayDate()}
           {...register('checkInDate')}
           error={errors.checkInDate?.message}
         />
