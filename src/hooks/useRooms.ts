@@ -115,6 +115,21 @@ export function useRooms() {
     }
   };
 
-  return { rooms, loading, error, updateRoomStatus, createRoom, updateRoom, refetch: fetchRooms };
+  const deleteRoom = async (roomId: string) => {
+    try {
+      const { error } = await supabase
+        .from('rooms')
+        .delete()
+        .eq('id', roomId);
+
+      if (error) throw error;
+      await fetchRooms();
+      return { error: null };
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  };
+
+  return { rooms, loading, error, updateRoomStatus, createRoom, updateRoom, deleteRoom, refetch: fetchRooms };
 }
 

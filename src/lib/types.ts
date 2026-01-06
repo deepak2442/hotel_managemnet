@@ -1,5 +1,13 @@
 export type RoomStatus = 'available' | 'occupied' | 'cleaning' | 'maintenance';
-export type RoomType = 'standard' | 'deluxe' | 'cottage' | 'dormitory';
+export type RoomType =
+  | 'standard'
+  | 'deluxe'
+  | 'cottage'
+  | 'dormitory'
+  | 'suit'
+  | 'deluxe cottage'
+  | 'double room'
+  | 'deluxe double room';
 export type Floor = 'ground' | 'first' | 'cottage';
 export type ProofType = 'aadhar' | 'pan' | 'driving_license';
 export type BookingStatus = 'checked_in' | 'checked_out' | 'cancelled' | 'reserved';

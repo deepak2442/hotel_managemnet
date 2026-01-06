@@ -9,7 +9,16 @@ import { Button } from '../common/Button';
 const roomSchema = z.object({
   room_number: z.string().min(1, 'Room number is required'),
   floor: z.enum(['ground', 'first', 'cottage']),
-  room_type: z.enum(['standard', 'deluxe', 'cottage', 'dormitory']),
+  room_type: z.enum([
+    'standard',
+    'deluxe',
+    'cottage',
+    'dormitory',
+    'suit',
+    'deluxe cottage',
+    'double room',
+    'deluxe double room',
+  ]),
   max_occupancy: z.number().min(1).max(10),
   status: z.enum(['available', 'occupied', 'cleaning', 'maintenance']),
 });
@@ -158,6 +167,10 @@ export function RoomForm({ room, onSubmit, onCancel }: RoomFormProps) {
                 <option value="deluxe">Deluxe</option>
                 <option value="cottage">Cottage</option>
                 <option value="dormitory">Dormitory</option>
+                <option value="suit">Suit</option>
+                <option value="deluxe cottage">Deluxe Cottage</option>
+                <option value="double room">Double Room</option>
+                <option value="deluxe double room">Deluxe Double Room</option>
               </select>
               {errors.room_type && (
                 <p className="mt-1.5 text-sm text-red-600 flex items-center">

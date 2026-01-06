@@ -6,7 +6,7 @@ CREATE TABLE rooms (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   room_number TEXT UNIQUE NOT NULL,
   floor TEXT NOT NULL CHECK (floor IN ('ground', 'first', 'cottage')),
-  room_type TEXT NOT NULL CHECK (room_type IN ('standard', 'deluxe', 'cottage', 'dormitory')),
+  room_type TEXT NOT NULL CHECK (room_type IN ('standard', 'deluxe', 'cottage', 'dormitory', 'suit', 'deluxe cottage')),
   max_occupancy INTEGER NOT NULL DEFAULT 2,
   status TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'occupied', 'cleaning', 'maintenance')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

@@ -10,12 +10,15 @@ import { RoomSelectorModal } from '../components/rooms/RoomSelectorModal';
 import { Button } from '../components/common/Button';
 
 export function Rooms() {
-  const { rooms, loading, createRoom, updateRoom, refetch } = useRooms();
+  const { rooms, loading, createRoom, updateRoom, deleteRoom, refetch } = useRooms();
   const { getActiveBookingByRoom } = useBookings();
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [showRoomForm, setShowRoomForm] = useState(false);
   const [showRoomSelector, setShowRoomSelector] = useState(false);
+  const [showDeleteSelector, setShowDeleteSelector] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingRoom, setDeletingRoom] = useState<Room | null>(null);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
 
   const handleRoomClick = (room: Room) => {
@@ -36,6 +39,34 @@ export function Rooms() {
     setEditingRoom(room);
     setShowRoomSelector(false);
     setShowRoomForm(true);
+  };
+
+  const handleDeleteRoomClick = () => {
+    setShowDeleteSelector(true);
+  };
+
+  const handleDeleteRoomSelect = (room: Room) => {
+    setDeletingRoom(room);
+    setShowDeleteSelector(false);
+    setShowDeleteConfirm(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingRoom) return;
+    
+    const { error } = await deleteRoom(deletingRoom.id);
+    if (!error) {
+      setShowDeleteConfirm(false);
+      setDeletingRoom(null);
+      refetch();
+    } else {
+      alert(`Error deleting room: ${error}`);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteConfirm(false);
+    setDeletingRoom(null);
   };
 
   const handleRoomFormSubmit = async (data: {
@@ -81,6 +112,12 @@ export function Rooms() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
               Edit Room
+            </Button>
+            <Button onClick={handleDeleteRoomClick} variant="danger" className="flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Delete Room
             </Button>
             <Button onClick={handleAddRoom}>Add Room</Button>
           </div>
@@ -153,6 +190,63 @@ export function Rooms() {
             setEditingRoom(null);
           }}
         />
+      </Modal>
+
+      {/* Delete Room Selector Modal */}
+      <Modal
+        isOpen={showDeleteSelector}
+        onClose={() => {
+          setShowDeleteSelector(false);
+        }}
+        title="Select Room to Delete"
+        size="lg"
+      >
+        <RoomSelectorModal
+          rooms={rooms}
+          onSelect={handleDeleteRoomSelect}
+          onCancel={() => {
+            setShowDeleteSelector(false);
+          }}
+        />
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={showDeleteConfirm}
+        onClose={handleCancelDelete}
+        title="Confirm Delete Room"
+        size="md"
+      >
+        {deletingRoom && (
+          <div className="space-y-4">
+            <p className="text-gray-700">
+              Are you sure you want to delete <span className="font-semibold">Room {deletingRoom.room_number}</span>?
+            </p>
+            <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+              <p><span className="font-medium">Floor:</span> {deletingRoom.floor}</p>
+              <p><span className="font-medium">Type:</span> {deletingRoom.room_type}</p>
+              <p><span className="font-medium">Status:</span> {deletingRoom.status}</p>
+            </div>
+            <p className="text-red-600 text-sm font-medium">
+              ⚠️ This action cannot be undone. The room will be permanently deleted.
+            </p>
+            {deletingRoom && getActiveBookingByRoom(deletingRoom.id) && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <p className="text-yellow-800 text-sm">
+                  ⚠️ Warning: This room has an active booking. Deleting it may cause issues.
+                </p>
+              </div>
+            )}
+            <div className="flex justify-end gap-3 pt-4">
+              <Button variant="outline" onClick={handleCancelDelete}>
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={handleConfirmDelete}>
+                Delete Room
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
